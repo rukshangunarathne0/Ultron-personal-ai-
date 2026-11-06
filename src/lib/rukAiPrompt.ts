@@ -215,7 +215,11 @@ export function containsSensitivePrivateData(text: string): boolean {
   if (/\b\d{13,19}\b/.test(digitsOnly)) {
     return true;
   }
-  if (/\b(sk-[a-zA-Z0-9]{16,}|gsk_[a-zA-Z0-9]{16,}|AIza[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{20,})\b/.test(text)) {
+  if (
+    /\b(sk-(?:or-v1-)?[a-zA-Z0-9_-]{16,}|gsk_[a-zA-Z0-9]{16,}|AIza[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{20,})\b/.test(
+      text
+    )
+  ) {
     return true;
   }
   return false;

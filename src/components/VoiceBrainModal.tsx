@@ -857,19 +857,19 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
 
           {tab === 'brain' && (
             <div className="space-y-3.5">
-              <div className="p-2.5 border border-amber-400/45 bg-amber-950/25 font-mono-tech text-[11px] text-amber-100 leading-relaxed">
-                <strong>FREE / NO-LIMIT BRAIN OPTIONS:</strong> <strong>Pollinations Free</strong> needs{' '}
-                <strong>ZERO API key &amp; ZERO signup</strong> (`qwen-coder` / `openai`).{' '}
-                <strong>Groq</strong> is pre-connected on server (+ auto-fails over to Pollinations Free).{' '}
-                <strong>OpenRouter `:free`</strong> gives uncensored Dolphin 3.0 &amp; Qwen3-Coder free.{' '}
-                <strong>Ollama</strong> runs 100% unlimited locally on your PC.
+              <div className="p-2.5 border border-emerald-400/45 bg-emerald-950/25 font-mono-tech text-[11px] text-emerald-100 leading-relaxed">
+                <strong>✓ OPENROUTER :FREE + GROQ TURBO + POLLINATIONS CONNECTED ON SERVER:</strong>{' '}
+                Your OpenRouter key is encrypted on server &amp; active across all your devices —
+                auto-routing coding &amp; Mobile UI changes to <strong>Qwen3-Coder / DeepSeek-V3 (:free)</strong>{' '}
+                and 18+ adult queries to uncensored <strong>Dolphin-Venice (:free)</strong>, with{' '}
+                <strong>Groq</strong> &amp; <strong>Pollinations</strong> backup!
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono-tech text-xs">
                 {[
-                  { id: 'groq', label: 'GROQ CLOUD', sub: 'Connected + Free Failover' },
+                  { id: 'openrouter', label: 'OPENROUTER :FREE', sub: '✓ Connected! Code + 18+' },
+                  { id: 'groq', label: 'GROQ CLOUD', sub: '✓ Connected! 500+ Tok/s' },
                   { id: 'pollinations', label: 'POLLINATIONS', sub: '100% Free • Zero Key!' },
-                  { id: 'openrouter', label: 'OPENROUTER :FREE', sub: 'Dolphin 18+ & Qwen Coder' },
                   { id: 'gemini', label: 'GOOGLE GEMINI', sub: '1,500/day Free • 1M Ctx' },
                   { id: 'mistral', label: 'MISTRAL / CODESTRAL', sub: 'Free Tier • Elite Code' },
                   { id: 'cerebras', label: 'CEREBRAS FREE', sub: '1M Tok/Day • 2200 T/s' },
@@ -890,7 +890,7 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
                             : b.id === 'groq'
                             ? 'openai/gpt-oss-120b'
                             : b.id === 'openrouter'
-                            ? 'qwen/qwen3-coder:free'
+                            ? 'auto'
                             : b.id === 'mistral'
                             ? 'codestral-latest'
                             : b.id === 'cerebras'
@@ -954,44 +954,47 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
                   <div className="p-3.5 border border-white/25 bg-black/45 space-y-2.5 font-mono-tech text-xs">
                     {brainConfig.provider === 'groq' && !brainConfig.apiKey.trim() && (
                       <div className="p-2 border border-emerald-500/45 bg-emerald-950/30 text-[11px] text-emerald-300">
-                        ✓ GROQ CLOUD PRE-CONNECTED ON SERVER (+ auto-fallback to Pollinations Free if rate-limited).
+                        ✓ GROQ CLOUD PRE-CONNECTED ON SERVER (+ auto-failover to OpenRouter :free Uncensored &amp; Pollinations).
                       </div>
                     )}
                     {brainConfig.provider === 'openrouter' && (
                       <div className="space-y-1.5">
+                        {!brainConfig.apiKey.trim() && (
+                          <div className="p-2 border border-emerald-500/45 bg-emerald-950/30 text-[11px] text-emerald-300">
+                            ✓ OPENROUTER :FREE KEY CONNECTED ON SERVER — Active automatically on Phone &amp; Desktop (no paste needed!).
+                          </div>
+                        )}
                         <div className="text-amber-200 text-[11px]">
-                          Get a free key at{' '}
-                          <a
-                            href="https://openrouter.ai/keys"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline text-white"
-                          >
-                            openrouter.ai/keys
-                          </a>{' '}
-                          — 1-click Free Models:
+                          1-Click Free Models (`auto` smart-switches Coding &harr; 18+ Uncensored):
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {[
-                            'qwen/qwen3-coder:free',
-                            'deepseek/deepseek-chat-v3-0324:free',
-                            'cognitivecomputations/dolphin3.0-mistral-24b:free',
-                            'meta-llama/llama-4-maverick:free',
+                            { id: 'auto', label: 'auto (Coder + 18+ Smart)' },
+                            { id: 'qwen/qwen3-coder:free', label: 'qwen3-coder:free' },
+                            { id: 'deepseek/deepseek-chat-v3-0324:free', label: 'deepseek-v3:free' },
+                            {
+                              id: 'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+                              label: 'dolphin-venice-18+:free',
+                            },
+                            {
+                              id: 'cognitivecomputations/dolphin3.0-mistral-24b:free',
+                              label: 'dolphin3.0-18+:free',
+                            },
                           ].map((m) => (
                             <button
-                              key={m}
+                              key={m.id}
                               type="button"
                               onClick={() => {
-                                onChangeBrainConfig({ ...brainConfig, model: m });
+                                onChangeBrainConfig({ ...brainConfig, model: m.id });
                                 triggerSaved();
                               }}
                               className={`px-2 py-0.5 border text-[10px] cursor-pointer ${
-                                brainConfig.model === m
+                                brainConfig.model === m.id
                                   ? 'border-white bg-white/20 text-white'
                                   : 'border-white/20 text-red-200'
                               }`}
                             >
-                              {m.split('/')[1]}
+                              {m.label}
                             </button>
                           ))}
                         </div>
@@ -1005,8 +1008,8 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
                         triggerSaved();
                       }}
                       placeholder={
-                        brainConfig.provider === 'groq'
-                          ? 'Optional override key (leave blank to use connected server key)'
+                        brainConfig.provider === 'groq' || brainConfig.provider === 'openrouter'
+                          ? `Optional override key (leave blank to use connected server ${brainConfig.provider.toUpperCase()} key)`
                           : `Paste free ${brainConfig.provider.toUpperCase()} API key here...`
                       }
                       className="w-full bg-black/65 border border-white/30 p-2 text-xs text-white font-mono-tech"

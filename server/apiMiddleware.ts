@@ -140,10 +140,20 @@ export function rukAiApiMiddleware(
     return;
   }
 
-  if (url === '/api/search' || url === '/api/comms') {
+  if (
+    url === '/api/search' ||
+    url === '/api/comms' ||
+    (url === '/api/chat' &&
+      Boolean(process.env.OPENROUTER_API_KEY || process.env.GROQ_API_KEY))
+  ) {
     readJsonBody(req).then(async (body) => {
       try {
-        const modPath = url === '/api/search' ? '../api/search.js' : '../api/comms.js';
+        const modPath =
+          url === '/api/search'
+            ? '../api/search.js'
+            : url === '/api/comms'
+            ? '../api/comms.js'
+            : '../api/chat.js';
         const mod = await import(modPath);
         const handler = mod.default;
         const vercelLikeReq = Object.assign(req, { body });

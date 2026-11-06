@@ -528,9 +528,15 @@ async function callExternalLLM(
     return proxyData?.content || '';
   }
 
-  if (brain.provider === 'groq' && !brain.apiKey.trim()) {
-    const model = brain.model.trim() || 'openai/gpt-oss-120b';
+  if (
+    (brain.provider === 'groq' || brain.provider === 'openrouter') &&
+    !brain.apiKey.trim()
+  ) {
+    const model =
+      brain.model.trim() ||
+      (brain.provider === 'openrouter' ? 'auto' : 'openai/gpt-oss-120b');
     const payload = JSON.stringify({
+      provider: brain.provider,
       systemPrompt,
       userPayload: xmlUserPayload,
       model,
@@ -555,7 +561,7 @@ async function callExternalLLM(
 
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data?.error || `Groq proxy ${res.status}`);
+      throw new Error(data?.error || `${brain.provider.toUpperCase()} proxy ${res.status}`);
     }
     return data?.content || '';
   }
@@ -594,6 +600,8 @@ async function callExternalLLM(
       (brain.model.trim() === 'llama-3.3-70b-versatile' ||
         brain.model.trim() === 'llama-3.1-8b-instant')
         ? 'openai/gpt-oss-120b'
+        : brain.provider === 'openrouter' && brain.model.trim() === 'auto'
+        ? 'qwen/qwen3-coder:free'
         : brain.model.trim() || defaultModel;
 
     const tryModels =
@@ -611,6 +619,14 @@ async function callExternalLLM(
           )
         : [requestedModel];
 
+    const extraHeaders: Record<string, string> =
+      brain.provider === 'openrouter'
+        ? {
+            'HTTP-Referer': 'https://ultron-personal-ai.vercel.app',
+            'X-Title': 'RUK-AI Ultron',
+          }
+        : {};
+
     let lastErr = '';
     let lastRefusal = '';
     for (const candidateModel of tryModels) {
@@ -619,6 +635,7 @@ async function callExternalLLM(
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${brain.apiKey.trim()}`,
+          ...extraHeaders,
         },
         body: JSON.stringify({
           model: candidateModel,
@@ -1126,6 +1143,7 @@ export async function processRukAiTurn(params: {
     brainConfig.provider !== 'autonomous_local' &&
     (brainConfig.provider === 'ollama' ||
       brainConfig.provider === 'groq' ||
+      brainConfig.provider === 'openrouter' ||
       brainConfig.provider === 'pollinations' ||
       Boolean(brainConfig.apiKey.trim()));
 
@@ -1381,6 +1399,8 @@ export async function runAutonomousSovereignPulse(params: {
     brainConfig.provider !== 'autonomous_local' &&
     (brainConfig.provider === 'ollama' ||
       brainConfig.provider === 'groq' ||
+      brainConfig.provider === 'openrouter' ||
+      brainConfig.provider === 'pollinations' ||
       Boolean(brainConfig.apiKey.trim()));
 
   if (useExternal) {

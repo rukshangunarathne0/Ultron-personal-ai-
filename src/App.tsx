@@ -47,7 +47,7 @@ import {
 
 const LOCAL_STORAGE_STATE_KEY = 'ruk_ai_ultron_state_v1';
 const LOCAL_STORAGE_VOICE_KEY = 'ruk_ai_voice_cfg_v2';
-const LOCAL_STORAGE_BRAIN_KEY = 'ruk_ai_brain_cfg_v3';
+const LOCAL_STORAGE_BRAIN_KEY = 'ruk_ai_brain_cfg_v4';
 const LOCAL_STORAGE_UI_KEY = 'ruk_ai_ultron_ui_v2';
 const LOCAL_STORAGE_COMMS_KEY = 'ruk_ai_comms_vault_v1';
 
@@ -91,9 +91,9 @@ const DEFAULT_VOICE_CONFIG: VoiceConfig = {
 };
 
 const DEFAULT_BRAIN_CONFIG: BrainConfig = {
-  provider: 'groq',
+  provider: 'openrouter',
   apiKey: '',
-  model: 'openai/gpt-oss-120b',
+  model: 'auto',
   ollamaUrl: 'http://localhost:11434',
 };
 
