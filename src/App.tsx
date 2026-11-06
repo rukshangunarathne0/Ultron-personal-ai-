@@ -12,6 +12,8 @@ import {
   SearchBundle,
   ThinkingStepId,
   UltronActionPayload,
+  UltronCodePayload,
+  UltronDomPatchAction,
   UltronEmotion,
   UltronUiConfig,
   UnseenCommsMessage,
@@ -35,14 +37,18 @@ import {
   sendCommsReply,
 } from './lib/omniTools';
 import {
+  applyFullCodeStateToDom,
   applyLiveCssToDom,
   clearInjectedDomPortals,
+  disposeAllManagedScopes,
+  EMPTY_CODE_STATE,
   executeUltronCodePayload,
   loadPersistedCodeState,
   PersistedCodeState,
-  runPersistentDomScript,
+  revertAllDomPatchesFromDom,
+  runAllPersistedScripts,
   savePersistedCodeState,
-  syncCustomTargetWidgetsToDom,
+  triggerFileDownload,
 } from './lib/codeEngine';
 
 const LOCAL_STORAGE_STATE_KEY = 'ruk_ai_ultron_state_v1';
@@ -299,13 +305,12 @@ export const App: React.FC = () => {
     []
   );
 
-  // Rehydrate vaulted MP3 acoustic imprint + persisted live CSS / DOM scripts on startup
+  // Rehydrate vaulted MP3 acoustic imprint + persisted CRUD CSS / Widgets / DOM Overrides / Scripts on startup
   useEffect(() => {
-    applyLiveCssToDom(codeState.liveCss);
-    syncCustomTargetWidgetsToDom(codeState.widgets);
-    if (codeState.persistentJs) {
+    applyFullCodeStateToDom(codeState);
+    if (codeState.persistentJs.trim() || codeState.scripts.length > 0) {
       window.setTimeout(() => {
-        runPersistentDomScript(codeState.persistentJs);
+        runAllPersistedScripts(codeState);
       }, 150);
     }
     loadSampleFromVault().then((sample) => {
@@ -533,8 +538,26 @@ export const App: React.FC = () => {
             autonomous: true,
           }));
           setTasks((cur) => [...added, ...cur]);
-          pushAutoLog('task', `Added autonomous directive: "${added[0].title}"`);
+          pushAutoLog('task', `Created directive: "${added[0].title}"`);
           changedParts.push(`+TASK("${added[0].title.slice(0, 24)}")`);
+        }
+        if (action.tasks.update && action.tasks.update.length > 0) {
+          const updates = action.tasks.update;
+          setTasks((cur) =>
+            cur.map((t) => {
+              const hit = updates.find((u) =>
+                t.title.toLowerCase().includes(u.match.toLowerCase())
+              );
+              if (!hit) return t;
+              return {
+                ...t,
+                title: hit.newTitle || t.title,
+                status: hit.status || t.status,
+              };
+            })
+          );
+          pushAutoLog('task', `Edited directive matching "${updates[0].match}"`);
+          changedParts.push(`~TASK("${updates[0].match.slice(0, 20)}")`);
         }
         if (action.tasks.complete && action.tasks.complete.length > 0) {
           const kws = action.tasks.complete.map((k) => k.toLowerCase());
@@ -545,6 +568,18 @@ export const App: React.FC = () => {
                 : t
             )
           );
+        }
+        if (action.tasks.delete && action.tasks.delete.length > 0) {
+          const kws = action.tasks.delete.map((k) => k.toLowerCase());
+          if (kws.includes('*')) {
+            setTasks([]);
+          } else {
+            setTasks((cur) =>
+              cur.filter((t) => !kws.some((kw) => t.title.toLowerCase().includes(kw)))
+            );
+          }
+          pushAutoLog('task', `Deleted directive(s): ${action.tasks.delete.join(', ')}`);
+          changedParts.push(`-TASK(${action.tasks.delete.length})`);
         }
       }
 
@@ -723,6 +758,7 @@ export const App: React.FC = () => {
           voiceConfig: snap.voiceConfig,
           commsVault: snap.commsVault,
           liveWidgets: snap.codeState.widgets,
+          codeState: snap.codeState,
           onStepChange: (step) => {
             setActiveStep(step);
             if (step === 2 || step === 3) setEmotion('thinking');
@@ -1109,16 +1145,54 @@ export const App: React.FC = () => {
       ...DEFAULT_UI_CONFIG,
       adultMode: prev.adultMode,
     }));
-    applyLiveCssToDom('');
+    disposeAllManagedScopes();
+    revertAllDomPatchesFromDom();
     clearInjectedDomPortals();
-    const emptyCode: PersistedCodeState = { liveCss: '', persistentJs: '', widgets: [] };
+    applyLiveCssToDom('');
+    const emptyCode: PersistedCodeState = {
+      ...EMPTY_CODE_STATE,
+      files: stateRefs.current.codeState.files,
+    };
     setCodeState(emptyCode);
     savePersistedCodeState(emptyCode);
-    showToast('HUD UI, Mobile View & live code patches restored to default Crimson Overlord.');
+    showToast('HUD UI, Mobile View & all CRUD patches restored to factory Crimson Overlord.');
   }, [showToast]);
 
-  // Expose full root window.ULTRON_OS SDK so Ultron's <ultron_code> JS can mutate any UI/Mobile/Voice/Widget when commanded!
+  const handleExecuteCrudCode = useCallback(
+    async (payload: UltronCodePayload) => {
+      const codeExec = await executeUltronCodePayload({
+        codePayload: payload,
+        currentState: stateRefs.current.codeState,
+      });
+      setCodeState(codeExec.nextState);
+      if (codeExec.executionOutput) {
+        setCodeOutput(codeExec.executionOutput);
+      }
+      pushAutoLog('code', codeExec.appliedSummary);
+      showToast(`CRUD CODE: ${codeExec.appliedSummary}`);
+    },
+    [pushAutoLog, showToast]
+  );
+
+  // Expose full root window.ULTRON_OS CRUD SDK so Ultron's JS can Create, Read, Update & Delete anything when commanded!
   useEffect(() => {
+    const inspectDom = (selector: string) => {
+      if (typeof document === 'undefined') return [];
+      try {
+        return Array.from(document.querySelectorAll(selector))
+          .slice(0, 12)
+          .map((el) => ({
+            tag: el.tagName.toLowerCase(),
+            id: el.id || undefined,
+            classes: el.getAttribute('class') || '',
+            text: (el.textContent || '').trim().slice(0, 220),
+            html: el.innerHTML.slice(0, 500),
+          }));
+      } catch {
+        return [];
+      }
+    };
+
     (window as any).ULTRON_OS = {
       getUi: () => stateRefs.current.uiConfig,
       setUi: (partial: Partial<UltronUiConfig>) => {
@@ -1128,45 +1202,176 @@ export const App: React.FC = () => {
       setVoice: (partial: Partial<VoiceConfig>) => {
         setVoiceConfig((prev) => ({ ...prev, ...partial }));
       },
-      injectCss: (css: string, append = false) => {
-        setCodeState((prev) => {
-          const nextCss = append && prev.liveCss ? `${prev.liveCss}\n${css}` : css;
-          applyLiveCssToDom(nextCss);
-          const next = { ...prev, liveCss: nextCss };
-          savePersistedCodeState(next);
-          return next;
-        });
+      getCodeState: () => stateRefs.current.codeState,
+
+      // 1. CSS CRUD
+      css: {
+        list: () => ({
+          liveCss: stateRefs.current.codeState.liveCss,
+          patches: stateRefs.current.codeState.cssPatches,
+        }),
+        upsert: (id: string, css: string) =>
+          handleExecuteCrudCode({ cssPatch: { id, css } }),
+        edit: (patchId: string | undefined, find: string, replace: string) =>
+          handleExecuteCrudCode({ replaceInCss: { patchId, find, replace } }),
+        remove: (idOrIds: string | string[]) =>
+          handleExecuteCrudCode({
+            removeCssPatchIds: Array.isArray(idOrIds) ? idOrIds : [idOrIds],
+          }),
+        clear: () => handleExecuteCrudCode({ removeCssPatchIds: ['*'] }),
       },
-      savePersistentDomScript: (js: string) => {
-        setCodeState((prev) => {
-          const next = { ...prev, persistentJs: js };
-          savePersistedCodeState(next);
-          return next;
-        });
+
+      // 2. WIDGETS CRUD
+      widgets: {
+        list: () => stateRefs.current.codeState.widgets,
+        upsert: (widget: {
+          id: string;
+          title?: string;
+          html: string;
+          js?: string;
+          targetSelector?: string;
+        }) => handleExecuteCrudCode({ widget }),
+        edit: (update: NonNullable<UltronCodePayload['updateWidget']>) =>
+          handleExecuteCrudCode({ updateWidget: update }),
+        remove: (idOrIds: string | string[]) =>
+          handleExecuteCrudCode({
+            removeWidgetIds: Array.isArray(idOrIds) ? idOrIds : [idOrIds],
+          }),
+        clear: () => handleExecuteCrudCode({ removeWidgetIds: ['*'] }),
       },
+
+      // 3. REVERSIBLE NATIVE DOM CRUD
+      dom: {
+        list: () => stateRefs.current.codeState.domPatches,
+        inspect: inspectDom,
+        patch: (
+          id: string,
+          selector: string,
+          action: UltronDomPatchAction,
+          value?: string,
+          styles?: Record<string, string>
+        ) =>
+          handleExecuteCrudCode({
+            domPatch: { id, selector, action, value, styles },
+          }),
+        remove: (idOrIds: string | string[]) =>
+          handleExecuteCrudCode({
+            removeDomPatchIds: Array.isArray(idOrIds) ? idOrIds : [idOrIds],
+          }),
+        clear: () => handleExecuteCrudCode({ removeDomPatchIds: ['*'] }),
+      },
+
+      // 4. PERSISTENT SCRIPTS CRUD
+      scripts: {
+        list: () => stateRefs.current.codeState.scripts,
+        upsert: (id: string, js: string, title?: string) =>
+          handleExecuteCrudCode({ scriptPatch: { id, title, js } }),
+        remove: (idOrIds: string | string[]) =>
+          handleExecuteCrudCode({
+            removeScriptIds: Array.isArray(idOrIds) ? idOrIds : [idOrIds],
+          }),
+        clear: () => handleExecuteCrudCode({ removeScriptIds: ['*'] }),
+      },
+
+      // 5. VIRTUAL WORKSPACE FILES CRUD
+      files: {
+        list: () =>
+          stateRefs.current.codeState.files.map((f) => ({
+            name: f.name,
+            chars: f.content.length,
+            updatedAt: f.updatedAt,
+          })),
+        read: (name: string) =>
+          stateRefs.current.codeState.files.find(
+            (f) => f.name.toLowerCase() === name.toLowerCase()
+          )?.content ?? null,
+        save: (name: string, content: string, download = false) =>
+          handleExecuteCrudCode({ saveFile: { name, content, download } }),
+        edit: (name: string, find: string, replace: string) =>
+          handleExecuteCrudCode({ editFile: { name, find, replace } }),
+        remove: (nameOrNames: string | string[]) =>
+          handleExecuteCrudCode({
+            deleteFileNames: Array.isArray(nameOrNames) ? nameOrNames : [nameOrNames],
+          }),
+        download: (name: string) => {
+          const found = stateRefs.current.codeState.files.find(
+            (f) => f.name.toLowerCase() === name.toLowerCase()
+          );
+          if (found) triggerFileDownload(found.name, found.content, found.mimeType);
+        },
+      },
+
+      // 6. MEMORIES & TASKS CRUD
+      memories: {
+        list: () => stateRefs.current.memories,
+        add: (type: MemoryCategory, text: string) => handleAddMemoryManual(type, text),
+        update: (idOrMatch: string, newText: string, newType?: MemoryCategory) => {
+          const now = new Date().toISOString();
+          setMemories((cur) =>
+            cur.map((m) =>
+              m.id === idOrMatch ||
+              m.text.toLowerCase().includes(idOrMatch.toLowerCase())
+                ? { ...m, text: newText, type: newType || m.type, updatedAt: now }
+                : m
+            )
+          );
+        },
+        remove: (idOrMatch: string) => {
+          setMemories((cur) =>
+            cur.filter(
+              (m) =>
+                m.id !== idOrMatch &&
+                !m.text.toLowerCase().includes(idOrMatch.toLowerCase())
+            )
+          );
+        },
+      },
+      tasks: {
+        list: () => stateRefs.current.tasks,
+        add: (title: string) => handleAddTask(title),
+        update: (idOrMatch: string, newTitle: string) => {
+          setTasks((cur) =>
+            cur.map((t) =>
+              t.id === idOrMatch ||
+              t.title.toLowerCase().includes(idOrMatch.toLowerCase())
+                ? { ...t, title: newTitle }
+                : t
+            )
+          );
+        },
+        remove: (idOrMatch: string) => {
+          setTasks((cur) =>
+            cur.filter(
+              (t) =>
+                t.id !== idOrMatch &&
+                !t.title.toLowerCase().includes(idOrMatch.toLowerCase())
+            )
+          );
+        },
+      },
+
+      // Legacy convenience aliases + Undo / Reset
+      injectCss: (css: string, append = false) =>
+        handleExecuteCrudCode({ liveCss: css, appendCss: append }),
+      savePersistentDomScript: (js: string) =>
+        handleExecuteCrudCode({ persistentJs: js }),
       mountWidget: (widget: {
         id?: string;
         title?: string;
         html: string;
         js?: string;
         targetSelector?: string;
-      }) => {
-        setCodeState((prev) => {
-          const w = {
+      }) =>
+        handleExecuteCrudCode({
+          widget: {
             id: widget.id || `wid_${Date.now()}`,
             title: widget.title || 'ULTRON MODULE',
             html: widget.html,
             js: widget.js,
             targetSelector: widget.targetSelector,
-            createdAt: new Date().toISOString(),
-          };
-          const nextWidgets = [w, ...prev.widgets.filter((x) => x.id !== w.id)].slice(0, 8);
-          syncCustomTargetWidgetsToDom(nextWidgets);
-          const next = { ...prev, widgets: nextWidgets };
-          savePersistedCodeState(next);
-          return next;
-        });
-      },
+          },
+        }),
+      undo: () => handleExecuteCrudCode({ undoLastPatch: true }),
       resetAllCode: resetAllUiAndCode,
       search: async (query: string, mode: 'all' | 'web' | 'images' | 'videos' = 'all') => {
         const b = await runUltronWebSearch(query, mode, stateRefs.current.uiConfig.adultMode);
@@ -1180,17 +1385,12 @@ export const App: React.FC = () => {
       },
       speak: (txt: string) => speakReply(txt, 'speaking'),
     };
-  }, [resetAllUiAndCode, speakReply]);
+  }, [handleExecuteCrudCode, resetAllUiAndCode, speakReply]);
 
   const handleRemoveLiveWidget = (id: string) => {
-    setCodeState((prev) => {
-      const next = {
-        ...prev,
-        widgets: prev.widgets.filter((w) => w.id !== id),
-      };
-      syncCustomTargetWidgetsToDom(next.widgets);
-      savePersistedCodeState(next);
-      return next;
+    handleExecuteCrudCode({
+      removeWidgetIds: [id],
+      summary: `Deleted widget [${id}]`,
     });
   };
 
@@ -1219,6 +1419,8 @@ export const App: React.FC = () => {
       brainConfig={brainConfig}
       voiceConfig={voiceConfig}
       uiConfig={uiConfig}
+      codeState={codeState}
+      onExecuteCrudCode={handleExecuteCrudCode}
       autonomousLog={autonomousLog}
       leftPanelMode={uiConfig.leftPanelMode || 'command_details'}
       onChangeLeftPanelMode={(mode) =>

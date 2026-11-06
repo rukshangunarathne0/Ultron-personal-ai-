@@ -143,20 +143,139 @@ export interface UltronLiveWidget {
   js?: string;
   targetSelector?: string;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface UltronCssPatch {
+  id: string;
+  css: string;
+  updatedAt: string;
+}
+
+export interface UltronScriptPatch {
+  id: string;
+  title?: string;
+  js: string;
+  updatedAt: string;
+}
+
+export type UltronDomPatchAction =
+  | 'setText'
+  | 'setHtml'
+  | 'setStyle'
+  | 'addClass'
+  | 'removeClass'
+  | 'setAttribute'
+  | 'removeAttribute'
+  | 'hide'
+  | 'show'
+  | 'appendHtml'
+  | 'prependHtml';
+
+export interface UltronDomPatch {
+  id: string;
+  selector: string;
+  action: UltronDomPatchAction;
+  value?: string;
+  attrName?: string;
+  styles?: Record<string, string>;
+  updatedAt: string;
+}
+
+export interface UltronVirtualFile {
+  name: string;
+  content: string;
+  mimeType?: string;
+  updatedAt: string;
 }
 
 export interface UltronCodePayload {
+  // CSS CRUD (Create, Update/Edit, Delete)
   liveCss?: string;
   appendCss?: boolean;
+  cssPatch?: {
+    id: string;
+    css: string;
+  };
+  cssPatches?: Array<{
+    id: string;
+    css: string;
+  }>;
+  replaceInCss?: {
+    patchId?: string;
+    find: string;
+    replace: string;
+  };
+  removeCssPatchIds?: string[];
+
+  // Persistent Script CRUD (Create, Update/Edit, Stop & Delete)
   persistentJs?: string;
+  scriptPatch?: {
+    id: string;
+    title?: string;
+    js: string;
+  };
+  removeScriptIds?: string[];
+
+  // Widget CRUD (Create, Update/Edit in-place, Delete)
   widget?: {
     id: string;
-    title: string;
-    html: string;
+    title?: string;
+    html?: string;
     js?: string;
     targetSelector?: string;
   };
+  updateWidget?: {
+    id: string;
+    title?: string;
+    html?: string;
+    js?: string;
+    targetSelector?: string;
+    replaceInHtml?: { find: string; replace: string };
+    replaceInJs?: { find: string; replace: string };
+  };
   removeWidgetId?: string;
+  removeWidgetIds?: string[];
+
+  // Native DOM Element CRUD (Create/Modify/Hide/Show + Reversible Delete/Undo)
+  domPatch?: {
+    id: string;
+    selector: string;
+    action: UltronDomPatchAction;
+    value?: string;
+    attrName?: string;
+    styles?: Record<string, string>;
+  };
+  domPatches?: Array<{
+    id: string;
+    selector: string;
+    action: UltronDomPatchAction;
+    value?: string;
+    attrName?: string;
+    styles?: Record<string, string>;
+  }>;
+  removeDomPatchIds?: string[];
+
+  // Virtual Workspace File CRUD (Create, Read, Edit, Delete, Download)
+  saveFile?: {
+    name: string;
+    content: string;
+    mimeType?: string;
+    download?: boolean;
+  };
+  editFile?: {
+    name: string;
+    find?: string;
+    replace?: string;
+    content?: string;
+    append?: string;
+    download?: boolean;
+  };
+  deleteFileNames?: string[];
+  readFileName?: string;
+
+  // Undo / Reset / Execute / Download
+  undoLastPatch?: boolean;
   clearAllPatches?: boolean;
   executeJs?: string;
   downloadFile?: {
@@ -197,7 +316,13 @@ export interface UltronActionPayload {
   }>;
   tasks?: {
     add?: string[];
+    update?: Array<{
+      match: string;
+      newTitle?: string;
+      status?: 'queued' | 'active' | 'completed';
+    }>;
     complete?: string[];
+    delete?: string[];
   };
   reason?: string;
 }

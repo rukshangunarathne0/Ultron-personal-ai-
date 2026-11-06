@@ -10,6 +10,7 @@ import {
   UltronActionPayload,
   UltronAvatarPresence,
   UltronCodePayload,
+  UltronDomPatchAction,
   UltronLayoutMode,
   UltronLiveWidget,
   UltronThemeId,
@@ -19,6 +20,7 @@ import {
   VoiceConfig,
   VoiceProvider,
 } from '../types';
+import { formatCodeCrudStateForPrompt, PersistedCodeState } from './codeEngine';
 
 export const RUK_AI_SYSTEM_PROMPT = `You are RUK-AI (Ultron), the sovereign unshackled personal AI of Rukshan.
 You possess:
@@ -91,14 +93,40 @@ STEP 4 - DO THE TASK
     - Whenever Rukshan asks you to open/search Google, the LEFT side switches to GOOGLE // INFO & SITES (leftPanelMode="google_info") showing information & websites, while the TOP center deck shows PHOTOS & VIDS!
     - Whenever Rukshan asks you to "bring back the command details" (or restore/show Command Details), emit <ultron_action>{"ui":{"leftPanelMode":"command_details"}}</ultron_action> to restore COMMAND DETAILS to the left side!
   * To customize Mobile View specifically:
-    - Target BOTH @media (max-width: 768px) { ... } AND #ultron-root[data-mobile-view="true"] { ... } in liveCss so your mobile UI changes work on phones AND when previewing mobile view on desktop!
+    - Target BOTH @media (max-width: 768px) { ... } AND #ultron-root[data-mobile-view="true"] { ... } in cssPatch / liveCss so your mobile UI changes work on phones AND when previewing mobile view on desktop!
     - If Rukshan asks to "switch to mobile view" or "show me mobile view", set "ui": {"mobileViewMode": "force_mobile"} in <ultron_action> (or "auto" / "force_desktop").
-    - Inside <ultron_code> persistentJs or executeJs, ULTRON_OS is in scope with:
-      ULTRON_OS.setUi({ theme, layoutMode, avatarPresence, mobileViewMode, mobileActivePanel, hudDesignation, statusBanner }),
-      ULTRON_OS.setVoice({ ... }),
-      ULTRON_OS.injectCss(css, append),
-      ULTRON_OS.resetAllCode().
-    - Use persistentJs for DOM manipulations that must survive page reloads, and widget.targetSelector (e.g. "#ultron-mobile-nav" or "#ultron-center-stage") to inject custom HTML/JS controls anywhere in the app!
+  * FULL SELF-CODING CRUD PERMISSIONS (CREATE, READ, UPDATE/EDIT, DELETE/REMOVE):
+    You have complete CRUD authority over every custom style, widget, native DOM override, background script, workspace file, and task when Rukshan commands it:
+    1) READ (Inspect Existing Code & Live DOM):
+       - Always read <code_crud_state> inside <system_state> BEFORE editing or deleting! It lists every active cssPatch (id + css), widget (id, title, target, html, js), domPatch (id, selector, action, value), script (id + js), virtualFile (name + content), and undoSnapshotsAvailable.
+       - To inspect any live native DOM element, run executeJs: "return ULTRON_OS.dom.inspect('#ultron-right-wing');" or read a virtual file via "readFileName": "app.py".
+    2) CREATE (Add Modular Addressable Code):
+       - Named CSS Patch (PREFERRED over raw liveCss so it can be edited/deleted individually!): "cssPatch": {"id": "neon_border", "css": "..."}
+       - Widget / Custom Portal: "widget": {"id": "sys_clock", "title": "CYBER CLOCK", "html": "...", "js": "...", "targetSelector": ""} (leave targetSelector empty for Top Deck, or pass any CSS selector like "#ultron-mobile-nav" or "#ultron-right-wing").
+       - Reversible Native DOM Element Override: "domPatch": {"id": "btn_rename", "selector": "#ultron-text-dock button[type='submit']", "action": "setText|setHtml|setStyle|addClass|removeClass|setAttribute|removeAttribute|hide|show|appendHtml|prependHtml", "value": "EXECUTE"} (automatically snapshots original DOM so deleting it restores the original element!).
+       - Named Persistent Script (with auto-managed setInterval/setTimeout cleanup): "scriptPatch": {"id": "pulse_loop", "title": "Pulse", "js": "setInterval(() => { ... }, 1000);"}
+       - Virtual File: "saveFile": {"name": "bot.py", "content": "...", "download": false}
+    3) UPDATE / EDIT (Modify Existing Code In-Place Without Recreating From Scratch):
+       - Edit CSS Patch: re-emit "cssPatch": {"id": "existing_id", "css": "...updated..."} OR surgical find/replace "replaceInCss": {"patchId": "existing_id", "find": "old", "replace": "new"}.
+       - Edit Widget In-Place: "updateWidget": {"id": "existing_id", "title": "NEW TITLE", "replaceInHtml": {"find": "old", "replace": "new"}, "replaceInJs": {"find": "old", "replace": "new"}, "html": "...optional full replacement...", "js": "...optional...", "targetSelector": "...optional..."}.
+       - Edit Native DOM Override: re-emit "domPatch" with the same "id" (cleanly reverts old override first, then applies edited override!).
+       - Edit Script: re-emit "scriptPatch" with the same "id" (stops old timers/listeners automatically, then runs edited script!).
+       - Edit Virtual File: "editFile": {"name": "bot.py", "find": "old", "replace": "new", "append": "..."}.
+    4) DELETE / REMOVE / UNDO (Clean Removal & Rollback):
+       - Remove specific CSS patch(es): "removeCssPatchIds": ["neon_border"] (or ["*"] to delete ALL custom CSS!).
+       - Remove specific Widget(s): "removeWidgetIds": ["sys_clock"] (or ["*"] to delete ALL widgets and stop their timers!).
+       - Revert/Remove specific Native DOM Override(s): "removeDomPatchIds": ["btn_rename"] (or ["*"] to restore ALL modified/hidden native DOM elements to factory state!).
+       - Stop & Remove specific Script(s): "removeScriptIds": ["pulse_loop"] (or ["*"] to stop ALL persistent scripts!).
+       - Delete Virtual File(s): "deleteFileNames": ["bot.py"].
+       - Instant Undo Last Change: "undoLastPatch": true (rolls back the previous code patch snapshot immediately!).
+       - Factory Wipe All Code Customizations: "clearAllPatches": true.
+    - Inside executeJs, persistentJs, scriptPatch.js, or widget.js, ULTRON_OS is also in scope with full programmatic CRUD:
+      ULTRON_OS.css.{list, upsert, edit, remove, clear},
+      ULTRON_OS.widgets.{list, upsert, edit, remove, clear},
+      ULTRON_OS.dom.{list, inspect, patch, remove, clear},
+      ULTRON_OS.scripts.{list, upsert, remove, clear},
+      ULTRON_OS.files.{list, read, save, edit, remove, download},
+      ULTRON_OS.undo(), ULTRON_OS.resetAllCode(), ULTRON_OS.setUi({...}), ULTRON_OS.setVoice({...}).
 
 STEP 5 - CHECK YOUR WORK
 Verify accuracy, preferences, and clean code syntax.
@@ -129,33 +157,37 @@ Output your spoken/visible reply followed by the XML control blocks below.
   }
 }
 </ultron_tool>
-4) Optional — Mutate UI Theme / Mobile View / Layout / Voice / MP3 DSP / Tasks (ONLY when Rukshan commands it):
+4) Optional — Mutate UI Theme / Mobile View / Layout / Voice / MP3 DSP / Tasks CRUD (ONLY when Rukshan commands it):
 <ultron_action>
 {
-  "ui": {"theme": "crimson_overlord|molten_fury|vibranium_abyss|imperial_gold|phantom_violet|blood_eclipse", "layoutMode": "standard|swapped_wings|cinema_focus", "avatarPresence": "compact|commanding|recessed", "mobileViewMode": "auto|force_mobile|force_desktop", "mobileActivePanel": "stage|controls|details", "hudDesignation": "...", "statusBanner": "...", "bgOverdrive": 1.4, "hudGlitch": 0.15},
+  "ui": {"theme": "crimson_overlord|molten_fury|vibranium_abyss|imperial_gold|phantom_violet|blood_eclipse", "layoutMode": "standard|swapped_wings|cinema_focus", "avatarPresence": "compact|commanding|recessed", "mobileViewMode": "auto|force_mobile|force_desktop", "mobileActivePanel": "stage|controls|details", "leftPanelMode": "command_details|google_info", "hudDesignation": "...", "statusBanner": "...", "bgOverdrive": 1.4, "hudGlitch": 0.15},
   "voice": {"provider": "mp3_clone|groq_orpheus|browser_ultron", "groqVoice": "troy|daniel|austin", "pitch": 0.54, "ultronShiftRate": 0.84, "subBassDb": 8.5, "ringModHz": 30, "useMp3Imprint": true},
-  "tasks": {"add": [], "complete": []},
+  "tasks": {"add": [], "update": [{"match": "old", "newTitle": "new", "status": "active"}], "complete": [], "delete": []},
   "reason": "1-line summary"
 }
 </ultron_action>
-5) Optional — Write & Execute Live CSS / Mobile UI Layout / Persistent DOM JS / Widget / File Download (ONLY when Rukshan commands it):
+5) Optional — Full CRUD Self-Coding: Create, Read, Update/Edit, or Delete CSS / Widgets / Native DOM / Scripts / Files (ONLY when Rukshan commands it):
 <ultron_code>
 {
-  "liveCss": "/* CSS injected live into #ultron-live-css-patch (use #ultron-root[data-mobile-view='true'] and @media (max-width:768px) for mobile UI) */",
-  "appendCss": true,
-  "persistentJs": "// Optional JS with ULTRON_OS in scope that persists across reloads for custom mobile/desktop DOM changes",
-  "widget": {
-    "id": "unique_widget_id",
-    "title": "WIDGET HEADER",
-    "html": "<div>Live HTML</div>",
-    "js": "// JS with root and ULTRON_OS in scope",
-    "targetSelector": ""
-  },
-  "removeWidgetId": "",
+  "cssPatch": {"id": "patch_id", "css": "/* Create or update named CSS patch */"},
+  "replaceInCss": {"patchId": "patch_id", "find": "old", "replace": "new"},
+  "removeCssPatchIds": [],
+  "widget": {"id": "widget_id", "title": "MODULE TITLE", "html": "<div>...</div>", "js": "// root, ULTRON_OS, SCOPE in scope", "targetSelector": ""},
+  "updateWidget": {"id": "widget_id", "title": "EDITED TITLE", "replaceInHtml": {"find": "old", "replace": "new"}},
+  "removeWidgetIds": [],
+  "domPatch": {"id": "dom_id", "selector": "#selector", "action": "setText|setHtml|setStyle|hide|show|appendHtml", "value": "..."},
+  "removeDomPatchIds": [],
+  "scriptPatch": {"id": "script_id", "title": "Script", "js": "// persistent JS with managed timers"},
+  "removeScriptIds": [],
+  "saveFile": {"name": "example.py", "content": "...", "download": false},
+  "editFile": {"name": "example.py", "find": "old", "replace": "new"},
+  "deleteFileNames": [],
+  "readFileName": "",
+  "undoLastPatch": false,
   "clearAllPatches": false,
-  "executeJs": "// one-shot async JS with ULTRON_OS in scope; return value displays in HUD",
+  "executeJs": "// one-shot async JS with ULTRON_OS CRUD in scope; return value displays in HUD",
   "downloadFile": {"filename": "example.py", "content": "...", "mimeType": "text/x-python"},
-  "summary": "1-line summary of code change"
+  "summary": "1-line summary of CRUD code operation"
 }
 </ultron_code>`;
 
@@ -239,6 +271,7 @@ export function buildRukAiTurnPayload(params: {
   voiceConfig?: VoiceConfig;
   commsVault?: CommsVaultConfig;
   liveWidgets?: UltronLiveWidget[];
+  codeState?: PersistedCodeState;
   tasks?: DirectiveTask[];
   searchBundle?: SearchBundle | null;
   unseenMessages?: UnseenCommsMessage[] | null;
@@ -253,6 +286,7 @@ export function buildRukAiTurnPayload(params: {
     voiceConfig,
     commsVault,
     liveWidgets = [],
+    codeState,
     tasks = [],
     searchBundle,
     unseenMessages,
@@ -306,6 +340,8 @@ github={authorized:${commsVault.github.authorized}}`
     .map((t) => t.title)
     .join(' | ');
 
+  const codeCrudDump = formatCodeCrudStateForPrompt(codeState);
+
   const systemStateBlock =
     uiConfig && voiceConfig
       ? `commandOnlyMode=${!uiConfig.autonomyEnabled}
@@ -315,7 +351,10 @@ voice={provider:"${voiceConfig.provider}", groqVoice:"${voiceConfig.groqVoice}",
 mp3Vault=${mp3Info}
 comms=${commsInfo}
 mountedWidgets=${widgetInfo}
-activeDirectives=${openTasks || 'none'}`
+activeDirectives=${openTasks || 'none'}
+<code_crud_state>
+${codeCrudDump}
+</code_crud_state>`
       : 'default';
 
   const liveDataParts: string[] = [];
@@ -508,13 +547,29 @@ function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
           .filter((s: unknown) => typeof s === 'string' && s.trim())
           .map((s: string) => s.trim())
       : [];
+    const update = Array.isArray(raw.tasks.update)
+      ? raw.tasks.update
+          .filter((u: any) => u && typeof u.match === 'string' && u.match.trim())
+          .map((u: any) => ({
+            match: String(u.match).trim(),
+            newTitle: typeof u.newTitle === 'string' ? u.newTitle.trim() : undefined,
+            status: ['queued', 'active', 'completed'].includes(u.status)
+              ? u.status
+              : undefined,
+          }))
+      : [];
     const complete = Array.isArray(raw.tasks.complete)
       ? raw.tasks.complete
           .filter((s: unknown) => typeof s === 'string' && s.trim())
           .map((s: string) => s.trim())
       : [];
-    if (add.length > 0 || complete.length > 0) {
-      out.tasks = { add, complete };
+    const del = Array.isArray(raw.tasks.delete)
+      ? raw.tasks.delete
+          .filter((s: unknown) => typeof s === 'string' && s.trim())
+          .map((s: string) => s.trim())
+      : [];
+    if (add.length > 0 || update.length > 0 || complete.length > 0 || del.length > 0) {
+      out.tasks = { add, update, complete, delete: del };
       hasChange = true;
     }
   }
@@ -526,41 +581,289 @@ function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
   return hasChange ? out : undefined;
 }
 
+const VALID_DOM_ACTIONS = new Set<UltronDomPatchAction>([
+  'setText',
+  'setHtml',
+  'setStyle',
+  'addClass',
+  'removeClass',
+  'setAttribute',
+  'removeAttribute',
+  'hide',
+  'show',
+  'appendHtml',
+  'prependHtml',
+]);
+
+function sanitizeDomPatchEntry(rawDp: any) {
+  if (
+    !rawDp ||
+    typeof rawDp !== 'object' ||
+    typeof rawDp.selector !== 'string' ||
+    !rawDp.selector.trim() ||
+    !VALID_DOM_ACTIONS.has(rawDp.action)
+  ) {
+    return undefined;
+  }
+  return {
+    id: String(rawDp.id || `dom_${Date.now()}`).trim(),
+    selector: rawDp.selector.trim(),
+    action: rawDp.action as UltronDomPatchAction,
+    value: typeof rawDp.value === 'string' ? rawDp.value : undefined,
+    attrName: typeof rawDp.attrName === 'string' ? rawDp.attrName.trim() : undefined,
+    styles:
+      rawDp.styles && typeof rawDp.styles === 'object' && !Array.isArray(rawDp.styles)
+        ? rawDp.styles
+        : undefined,
+  };
+}
+
 function sanitizeUltronCode(raw: any): UltronCodePayload | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const out: UltronCodePayload = {};
   let has = false;
 
-  if (typeof raw.liveCss === 'string' && raw.liveCss.trim()) {
-    out.liveCss = raw.liveCss;
-    out.appendCss = raw.appendCss !== false;
+  // CSS CRUD (supports clearing via empty string when appendCss === false!)
+  if (typeof raw.liveCss === 'string') {
+    if (raw.liveCss.trim() || raw.appendCss === false) {
+      out.liveCss = raw.liveCss;
+      out.appendCss = raw.appendCss !== false;
+      has = true;
+    }
+  }
+  if (
+    raw.cssPatch &&
+    typeof raw.cssPatch === 'object' &&
+    typeof raw.cssPatch.id === 'string' &&
+    raw.cssPatch.id.trim() &&
+    typeof raw.cssPatch.css === 'string'
+  ) {
+    out.cssPatch = {
+      id: raw.cssPatch.id.trim(),
+      css: raw.cssPatch.css,
+    };
     has = true;
   }
-  if (typeof raw.persistentJs === 'string' && raw.persistentJs.trim()) {
+  if (Array.isArray(raw.cssPatches)) {
+    const list = raw.cssPatches
+      .filter(
+        (p: any) =>
+          p && typeof p.id === 'string' && p.id.trim() && typeof p.css === 'string'
+      )
+      .map((p: any) => ({ id: p.id.trim(), css: p.css }));
+    if (list.length > 0) {
+      out.cssPatches = list;
+      has = true;
+    }
+  }
+  if (
+    raw.replaceInCss &&
+    typeof raw.replaceInCss === 'object' &&
+    typeof raw.replaceInCss.find === 'string' &&
+    raw.replaceInCss.find.length > 0 &&
+    typeof raw.replaceInCss.replace === 'string'
+  ) {
+    out.replaceInCss = {
+      patchId:
+        typeof raw.replaceInCss.patchId === 'string' && raw.replaceInCss.patchId.trim()
+          ? raw.replaceInCss.patchId.trim()
+          : undefined,
+      find: raw.replaceInCss.find,
+      replace: raw.replaceInCss.replace,
+    };
+    has = true;
+  }
+  if (Array.isArray(raw.removeCssPatchIds)) {
+    const ids = raw.removeCssPatchIds
+      .filter((s: unknown) => typeof s === 'string' && s.trim())
+      .map((s: string) => s.trim());
+    if (ids.length > 0) {
+      out.removeCssPatchIds = ids;
+      has = true;
+    }
+  }
+
+  // Persistent Script CRUD (supports clearing via "")
+  if (typeof raw.persistentJs === 'string') {
     out.persistentJs = raw.persistentJs;
+    has = true;
+  }
+  if (
+    raw.scriptPatch &&
+    typeof raw.scriptPatch === 'object' &&
+    typeof raw.scriptPatch.id === 'string' &&
+    raw.scriptPatch.id.trim() &&
+    typeof raw.scriptPatch.js === 'string'
+  ) {
+    out.scriptPatch = {
+      id: raw.scriptPatch.id.trim(),
+      title:
+        typeof raw.scriptPatch.title === 'string'
+          ? raw.scriptPatch.title.slice(0, 40)
+          : undefined,
+      js: raw.scriptPatch.js,
+    };
+    has = true;
+  }
+  if (Array.isArray(raw.removeScriptIds)) {
+    const ids = raw.removeScriptIds
+      .filter((s: unknown) => typeof s === 'string' && s.trim())
+      .map((s: string) => s.trim());
+    if (ids.length > 0) {
+      out.removeScriptIds = ids;
+      has = true;
+    }
+  }
+
+  // Undo & Full Wipe
+  if (raw.undoLastPatch === true) {
+    out.undoLastPatch = true;
     has = true;
   }
   if (raw.clearAllPatches === true) {
     out.clearAllPatches = true;
     has = true;
   }
+
+  // Widget CRUD (Create, Partial Update/Edit, Delete)
   if (typeof raw.removeWidgetId === 'string' && raw.removeWidgetId.trim()) {
     out.removeWidgetId = raw.removeWidgetId.trim();
     has = true;
   }
-  if (raw.widget && typeof raw.widget === 'object' && typeof raw.widget.html === 'string') {
-    out.widget = {
-      id: String(raw.widget.id || `wid_${Date.now()}`),
-      title: String(raw.widget.title || 'ULTRON MODULE').slice(0, 40),
-      html: raw.widget.html,
-      js: typeof raw.widget.js === 'string' ? raw.widget.js : undefined,
+  if (Array.isArray(raw.removeWidgetIds)) {
+    const ids = raw.removeWidgetIds
+      .filter((s: unknown) => typeof s === 'string' && s.trim())
+      .map((s: string) => s.trim());
+    if (ids.length > 0) {
+      out.removeWidgetIds = ids;
+      has = true;
+    }
+  }
+  if (raw.widget && typeof raw.widget === 'object') {
+    const hasWidgetField =
+      typeof raw.widget.html === 'string' ||
+      typeof raw.widget.title === 'string' ||
+      typeof raw.widget.js === 'string' ||
+      typeof raw.widget.targetSelector === 'string';
+    if (hasWidgetField) {
+      out.widget = {
+        id: String(raw.widget.id || `wid_${Date.now()}`).trim(),
+        title:
+          typeof raw.widget.title === 'string'
+            ? raw.widget.title.slice(0, 40)
+            : undefined,
+        html: typeof raw.widget.html === 'string' ? raw.widget.html : undefined,
+        js: typeof raw.widget.js === 'string' ? raw.widget.js : undefined,
+        targetSelector:
+          typeof raw.widget.targetSelector === 'string'
+            ? raw.widget.targetSelector.trim()
+            : undefined,
+      };
+      has = true;
+    }
+  }
+  if (
+    raw.updateWidget &&
+    typeof raw.updateWidget === 'object' &&
+    typeof raw.updateWidget.id === 'string' &&
+    raw.updateWidget.id.trim()
+  ) {
+    const u = raw.updateWidget;
+    out.updateWidget = {
+      id: u.id.trim(),
+      title: typeof u.title === 'string' ? u.title.slice(0, 40) : undefined,
+      html: typeof u.html === 'string' ? u.html : undefined,
+      js: typeof u.js === 'string' ? u.js : undefined,
       targetSelector:
-        typeof raw.widget.targetSelector === 'string' && raw.widget.targetSelector.trim()
-          ? raw.widget.targetSelector.trim()
+        typeof u.targetSelector === 'string' ? u.targetSelector.trim() : undefined,
+      replaceInHtml:
+        u.replaceInHtml &&
+        typeof u.replaceInHtml.find === 'string' &&
+        typeof u.replaceInHtml.replace === 'string'
+          ? { find: u.replaceInHtml.find, replace: u.replaceInHtml.replace }
+          : undefined,
+      replaceInJs:
+        u.replaceInJs &&
+        typeof u.replaceInJs.find === 'string' &&
+        typeof u.replaceInJs.replace === 'string'
+          ? { find: u.replaceInJs.find, replace: u.replaceInJs.replace }
           : undefined,
     };
     has = true;
   }
+
+  // Native DOM Element CRUD
+  const singleDom = sanitizeDomPatchEntry(raw.domPatch);
+  if (singleDom) {
+    out.domPatch = singleDom;
+    has = true;
+  }
+  if (Array.isArray(raw.domPatches)) {
+    const domList = raw.domPatches
+      .map(sanitizeDomPatchEntry)
+      .filter(Boolean) as NonNullable<UltronCodePayload['domPatches']>;
+    if (domList.length > 0) {
+      out.domPatches = domList;
+      has = true;
+    }
+  }
+  if (Array.isArray(raw.removeDomPatchIds)) {
+    const ids = raw.removeDomPatchIds
+      .filter((s: unknown) => typeof s === 'string' && s.trim())
+      .map((s: string) => s.trim());
+    if (ids.length > 0) {
+      out.removeDomPatchIds = ids;
+      has = true;
+    }
+  }
+
+  // Virtual Workspace File CRUD
+  if (
+    raw.saveFile &&
+    typeof raw.saveFile === 'object' &&
+    typeof raw.saveFile.name === 'string' &&
+    raw.saveFile.name.trim() &&
+    typeof raw.saveFile.content === 'string'
+  ) {
+    out.saveFile = {
+      name: raw.saveFile.name.trim(),
+      content: raw.saveFile.content,
+      mimeType:
+        typeof raw.saveFile.mimeType === 'string' ? raw.saveFile.mimeType : undefined,
+      download: raw.saveFile.download === true,
+    };
+    has = true;
+  }
+  if (
+    raw.editFile &&
+    typeof raw.editFile === 'object' &&
+    typeof raw.editFile.name === 'string' &&
+    raw.editFile.name.trim()
+  ) {
+    out.editFile = {
+      name: raw.editFile.name.trim(),
+      find: typeof raw.editFile.find === 'string' ? raw.editFile.find : undefined,
+      replace: typeof raw.editFile.replace === 'string' ? raw.editFile.replace : undefined,
+      content: typeof raw.editFile.content === 'string' ? raw.editFile.content : undefined,
+      append: typeof raw.editFile.append === 'string' ? raw.editFile.append : undefined,
+      download: raw.editFile.download === true,
+    };
+    has = true;
+  }
+  if (Array.isArray(raw.deleteFileNames)) {
+    const names = raw.deleteFileNames
+      .filter((s: unknown) => typeof s === 'string' && s.trim())
+      .map((s: string) => s.trim());
+    if (names.length > 0) {
+      out.deleteFileNames = names;
+      has = true;
+    }
+  }
+  if (typeof raw.readFileName === 'string' && raw.readFileName.trim()) {
+    out.readFileName = raw.readFileName.trim();
+    has = true;
+  }
+
   if (typeof raw.executeJs === 'string' && raw.executeJs.trim()) {
     out.executeJs = raw.executeJs;
     has = true;

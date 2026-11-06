@@ -35,6 +35,7 @@ import {
   sendCommsReply,
   verifyTelegramToken,
 } from './omniTools';
+import { PersistedCodeState } from './codeEngine';
 
 export interface BrainTurnResult {
   answer: string;
@@ -779,9 +780,9 @@ function detectLocalSovereignOverride(userText: string): UltronActionPayload | u
 }
 
 /**
- * Strict Command-Only Gate:
- * Returns true ONLY when Rukshan actually commanded Ultron to change UI, mobile view, theme,
- * layout, styling, widgets, live code, JS execution, or downloadable files!
+ * Strict Command-Only Gate (with full CRUD verb support):
+ * Returns true ONLY when Rukshan actually commanded Ultron to Create, Read, Update/Edit,
+ * or Delete/Remove UI, mobile view, theme, layout, styling, widgets, DOM edits, scripts, or files!
  */
 export function didUserCommandUiOrCode(userText: string): {
   allowUiMutation: boolean;
@@ -791,7 +792,7 @@ export function didUserCommandUiOrCode(userText: string): {
   const low = userText.toLowerCase();
 
   const allowUiMutation =
-    /\b(ui|hud|theme|color|colour|layout|panel|wing|mobile|phone|desktop|screen|view|command\s+details?|command\s+panel|search\s+details?|bring\s+back|get\s+it\s+back|left\s+side|right\s+side|style|css|font|border|background|button|nav|bar|header|footer|compact|bigger|smaller|hide|show|move|swap|flip|reset|redesign|customize|change|modify|update|make\s+(?:it|the|your)|18\+|safesearch|adult)\b/.test(
+    /\b(ui|hud|theme|color|colour|layout|panel|wing|mobile|phone|desktop|screen|view|command\s+details?|command\s+panel|search\s+details?|bring\s+back|get\s+it\s+back|left\s+side|right\s+side|style|css|font|border|background|button|nav|bar|header|footer|compact|bigger|smaller|hide|unhide|show|move|swap|flip|reset|revert|restore|undo|redesign|customize|change|edit|modify|update|tweak|adjust|rename|replace|remove|delete|erase|wipe|make\s+(?:it|the|your)|18\+|safesearch|adult)\b/.test(
       low
     );
 
@@ -802,7 +803,7 @@ export function didUserCommandUiOrCode(userText: string): {
 
   const allowCodeExecution =
     allowUiMutation ||
-    /\b(code|coding|script|javascript|js|html|css|widget|module|clock|timer|calculator|weather|build|create|add|remove|clear|patch|fix|write|generate|download|file|\.py|\.js|\.html|\.json|calculate|compute|run)\b/.test(
+    /\b(code|coding|crud|script|javascript|js|html|css|dom|element|selector|widget|module|portal|clock|timer|calculator|weather|build|create|add|edit|update|modify|tweak|rename|replace|remove|delete|erase|clear|wipe|undo|revert|restore|stop|kill|inspect|read|list|patch|fix|write|save|generate|download|file|\.py|\.js|\.ts|\.html|\.css|\.json|calculate|compute|run)\b/.test(
       low
     );
 
@@ -852,14 +853,66 @@ function normalizePhoneInput(raw: string): string | null {
   return cleaned.startsWith('+') ? cleaned : `+${digits}`;
 }
 
-function detectLocalCodeFallback(userText: string): UltronCodePayload | undefined {
+function detectLocalCodeFallback(
+  userText: string,
+  codeState?: PersistedCodeState
+): UltronCodePayload | undefined {
   const low = userText.toLowerCase();
-  if (/\b(clear|remove|reset|delete)\b.*\b(patches|widgets?|custom\s+css|code\s+changes)\b/.test(low)) {
+
+  if (
+    /\b(undo|roll\s*back|revert)\b.*\b(last|previous|recent)?\s*(change|edit|code|patch|style|widget|ui)?\b/.test(
+      low
+    ) &&
+    codeState &&
+    codeState.history.length > 0
+  ) {
     return {
-      clearAllPatches: true,
-      summary: 'Cleared all custom CSS patches & mounted HUD widgets',
+      undoLastPatch: true,
+      summary: 'Reverted last code / UI patch from undo history',
     };
   }
+
+  if (
+    /\b(clear|remove|reset|delete|wipe)\b.*\b(all\s+)?(patches|everything|all\s+widgets?|all\s+custom|code\s+changes|customizations)\b/.test(
+      low
+    )
+  ) {
+    return {
+      clearAllPatches: true,
+      summary: 'Cleared all custom CSS patches, DOM edits, scripts & HUD widgets',
+    };
+  }
+
+  if (/\b(remove|delete|clear)\b.*\b(all\s+)?widgets?\b/.test(low)) {
+    return {
+      removeWidgetIds: ['*'],
+      summary: 'Deleted all mounted widgets',
+    };
+  }
+
+  if (/\b(remove|delete|clear)\b.*\b(custom\s+)?css\b/.test(low)) {
+    return {
+      removeCssPatchIds: ['*'],
+      summary: 'Removed all custom CSS patches',
+    };
+  }
+
+  // Match deleting a specific mounted widget by its ID or title!
+  if (codeState && /\b(remove|delete|close|destroy)\b/.test(low)) {
+    for (const w of codeState.widgets) {
+      if (
+        low.includes(w.id.toLowerCase()) ||
+        (w.title && low.includes(w.title.toLowerCase())) ||
+        (/\bclock\b/.test(low) && /clock/i.test(w.id + ' ' + w.title))
+      ) {
+        return {
+          removeWidgetIds: [w.id],
+          summary: `Deleted widget "${w.title}" [${w.id}]`,
+        };
+      }
+    }
+  }
+
   if (/\b(add|build|create|show)\b.*\b(clock|time)\b/.test(low)) {
     return {
       widget: {
@@ -886,6 +939,7 @@ export async function processRukAiTurn(params: {
   voiceConfig?: VoiceConfig;
   commsVault?: CommsVaultConfig;
   liveWidgets?: UltronLiveWidget[];
+  codeState?: PersistedCodeState;
   onStepChange?: (step: ThinkingStepId) => void;
 }): Promise<BrainTurnResult> {
   const {
@@ -898,6 +952,7 @@ export async function processRukAiTurn(params: {
     voiceConfig,
     commsVault,
     liveWidgets = [],
+    codeState,
     onStepChange,
   } = params;
 
@@ -1181,6 +1236,7 @@ export async function processRukAiTurn(params: {
     voiceConfig,
     commsVault: workingVault,
     liveWidgets,
+    codeState,
     tasks,
     searchBundle,
     unseenMessages: preFetchedUnseen,
@@ -1286,6 +1342,7 @@ export async function processRukAiTurn(params: {
             voiceConfig,
             commsVault: workingVault,
             liveWidgets,
+            codeState,
             tasks,
             searchBundle,
             unseenMessages: preFetchedUnseen,
@@ -1360,7 +1417,7 @@ export async function processRukAiTurn(params: {
   }
 
   const rawAction = modelAction || detectLocalSovereignOverride(requestText);
-  const rawCode = modelCode || detectLocalCodeFallback(requestText);
+  const rawCode = modelCode || detectLocalCodeFallback(requestText, codeState);
 
   // Enforce Rukshan's strict Command-Only UI & Code Rule:
   // Never mutate UI, voice, or DOM code unless Rukshan explicitly asked for it!

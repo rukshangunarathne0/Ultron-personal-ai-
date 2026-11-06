@@ -22,6 +22,7 @@ import {
   UnseenCommsMessage,
   VideoSearchItem,
 } from '../types';
+import { createManagedScope, disposeManagedScope } from '../lib/codeEngine';
 
 interface OmniViewportDeckProps {
   searchBundle: SearchBundle | null;
@@ -44,19 +45,29 @@ const MountedWidgetCard: React.FC<{
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
+    const scopeKey = `widget:${widget.id}`;
+    const scope = createManagedScope(scopeKey);
     root.innerHTML = widget.html;
     if (widget.js && widget.js.trim()) {
       try {
-        const fn = new Function('root', widget.js);
-        fn(root);
+        const fn = new Function(
+          'root',
+          'ULTRON_OS',
+          'SCOPE',
+          'setInterval',
+          'setTimeout',
+          widget.js
+        );
+        fn(root, (window as any).ULTRON_OS, scope, scope.setInterval, scope.setTimeout);
       } catch (err) {
         console.warn('Widget JS error:', err);
       }
     }
     return () => {
+      disposeManagedScope(scopeKey);
       if (root) root.innerHTML = '';
     };
-  }, [widget.html, widget.js]);
+  }, [widget.id, widget.html, widget.js, widget.updatedAt]);
 
   return (
     <div className="ultron-glass ultron-corners p-2 rounded-sm pointer-events-auto">

@@ -9,17 +9,23 @@ import {
   Copy,
   Cpu,
   Database,
+  Download,
+  Edit3,
   ExternalLink,
+  FileCode,
   Globe,
   Lock,
   Plus,
   RotateCcw,
+  Save,
   Search,
   ShieldAlert,
   Sparkles,
   Terminal,
   Trash2,
+  Undo2,
   UserCheck,
+  X,
   Zap,
 } from 'lucide-react';
 import {
@@ -30,6 +36,7 @@ import {
   MemoryItem,
   SearchBundle,
   ThinkingStepId,
+  UltronCodePayload,
   UltronEmotion,
   UltronLeftPanelMode,
   UltronUiConfig,
@@ -37,6 +44,7 @@ import {
 } from '../types';
 import { THINKING_STEPS } from '../lib/rukAiPrompt';
 import { getProfileMemories } from '../lib/memorySearch';
+import { PersistedCodeState, triggerFileDownload } from '../lib/codeEngine';
 
 interface LeftDetailsHudProps {
   memories: MemoryItem[];
@@ -50,6 +58,8 @@ interface LeftDetailsHudProps {
   brainConfig: BrainConfig;
   voiceConfig: VoiceConfig;
   uiConfig: UltronUiConfig;
+  codeState: PersistedCodeState;
+  onExecuteCrudCode: (payload: UltronCodePayload) => Promise<void>;
   autonomousLog: AutonomousLogEntry[];
   leftPanelMode: UltronLeftPanelMode;
   onChangeLeftPanelMode: (mode: UltronLeftPanelMode) => void;
@@ -123,6 +133,8 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
   brainConfig,
   voiceConfig,
   uiConfig,
+  codeState,
+  onExecuteCrudCode,
   autonomousLog,
   leftPanelMode,
   onChangeLeftPanelMode,
@@ -146,6 +158,22 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
   const [newMemText, setNewMemText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [editingCrudKey, setEditingCrudKey] = useState<string | null>(null);
+  const [editDraftTitle, setEditDraftTitle] = useState('');
+  const [editDraftCode, setEditDraftCode] = useState('');
+  const [editDraftJs, setEditDraftJs] = useState('');
+  const [showNewCssForm, setShowNewCssForm] = useState(false);
+  const [newCssId, setNewCssId] = useState('');
+  const [newCssBody, setNewCssBody] = useState('');
+
+  const activeCrudCount =
+    (codeState.liveCss.trim() ? 1 : 0) +
+    codeState.cssPatches.length +
+    codeState.widgets.length +
+    codeState.domPatches.length +
+    codeState.scripts.length +
+    (codeState.persistentJs.trim() ? 1 : 0) +
+    codeState.files.length;
 
   const profileMemories = getProfileMemories(memories);
   const filteredMemories = memories.filter((m) =>
@@ -522,7 +550,7 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
                 { id: 'memories', label: `MEM(${memories.length})`, icon: Database },
                 { id: 'profile', label: 'PROF', icon: UserCheck },
                 { id: 'tasks', label: `TASK(${tasks.length})`, icon: Activity },
-                { id: 'auto', label: `AUTO(${autonomousLog.length})`, icon: Zap },
+                { id: 'auto', label: `CRUD(${activeCrudCount})`, icon: Zap },
                 { id: 'xml', label: 'XML', icon: Code2 },
               ].map((tab) => {
                 const Icon = tab.icon;
@@ -755,28 +783,573 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
               )}
 
               {activeTab === 'auto' && (
-                <div className="flex-1 overflow-y-auto ultron-scroll space-y-1.5 pr-0.5 font-mono-tech">
-                  <div className="text-[9px] text-amber-300 border-b border-white/15 pb-1">
-                    SYSTEM ACTIVITY LOG (SEARCH / CODE / UI / VOICE)
-                  </div>
-                  {autonomousLog.length === 0 ? (
-                    <p className="text-[9.5px] text-red-200/75 py-4 text-center">
-                      All live Google searches, code patches, and vocal updates appear here.
-                    </p>
-                  ) : (
-                    autonomousLog.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="p-1.5 border border-white/20 bg-black/40 text-[9.5px] space-y-0.5"
+                <div className="flex-1 overflow-y-auto ultron-scroll space-y-2 pr-0.5 font-mono-tech">
+                  {/* CRUD ACTION HEADER */}
+                  <div className="flex items-center justify-between gap-1 border-b border-white/15 pb-1.5">
+                    <span className="text-[8.5px] text-amber-300 font-bold tracking-wider">
+                      CODE CRUD ({activeCrudCount})
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowNewCssForm((v) => !v)}
+                        title="Create new CSS Patch"
+                        className="px-1.5 py-0.5 border border-emerald-400/60 bg-emerald-950/40 hover:bg-emerald-900/50 text-[8px] text-emerald-200 flex items-center gap-0.5 cursor-pointer"
                       >
-                        <div className="flex items-center justify-between text-[8px] text-amber-300/90">
-                          <span className="uppercase">[{entry.category}]</span>
-                          <span>{entry.timestamp.slice(11, 19)}</span>
-                        </div>
-                        <div className="text-white/95 leading-snug">{entry.summary}</div>
+                        <Plus className="w-2.5 h-2.5" />
+                        <span>+CSS</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={codeState.history.length === 0}
+                        onClick={() =>
+                          onExecuteCrudCode({
+                            undoLastPatch: true,
+                            summary: 'Undid last code change from CRUD panel',
+                          })
+                        }
+                        title="Undo last code / UI patch"
+                        className="px-1.5 py-0.5 border border-cyan-400/60 bg-cyan-950/40 hover:bg-cyan-900/50 disabled:opacity-35 text-[8px] text-cyan-200 flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <Undo2 className="w-2.5 h-2.5" />
+                        <span>UNDO({codeState.history.length})</span>
+                      </button>
+                      {activeCrudCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onExecuteCrudCode({
+                              clearAllPatches: true,
+                              summary: 'Cleared all active CRUD patches',
+                            })
+                          }
+                          title="Delete all custom CSS, widgets, DOM edits & scripts"
+                          className="px-1.5 py-0.5 border border-red-400/60 bg-red-950/50 hover:bg-red-900/60 text-[8px] text-red-200 flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                          <span>WIPE</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick Create CSS Patch Form */}
+                  {showNewCssForm && (
+                    <div className="p-1.5 border border-emerald-400/50 bg-black/65 space-y-1">
+                      <input
+                        value={newCssId}
+                        onChange={(e) => setNewCssId(e.target.value)}
+                        placeholder="Patch ID (e.g. custom_glow)"
+                        className="w-full bg-black/70 border border-white/25 px-1.5 py-1 text-[9px] text-white focus:outline-none"
+                      />
+                      <textarea
+                        rows={3}
+                        value={newCssBody}
+                        onChange={(e) => setNewCssBody(e.target.value)}
+                        placeholder="/* CSS rules */"
+                        className="w-full bg-black/70 border border-white/25 p-1.5 text-[9px] text-emerald-100 focus:outline-none"
+                      />
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowNewCssForm(false)}
+                          className="px-1.5 py-0.5 border border-white/20 text-[8px] text-red-200 cursor-pointer"
+                        >
+                          CANCEL
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!newCssBody.trim()) return;
+                            await onExecuteCrudCode({
+                              cssPatch: {
+                                id: newCssId.trim() || `patch_${Date.now()}`,
+                                css: newCssBody,
+                              },
+                            });
+                            setNewCssId('');
+                            setNewCssBody('');
+                            setShowNewCssForm(false);
+                          }}
+                          className="px-2 py-0.5 border border-emerald-400/70 bg-emerald-900/60 text-[8px] text-white cursor-pointer"
+                        >
+                          CREATE PATCH
+                        </button>
                       </div>
-                    ))
+                    </div>
                   )}
+
+                  {activeCrudCount === 0 && (
+                    <div className="p-2 border border-white/15 bg-black/35 text-[9px] text-red-100/80 leading-relaxed">
+                      Full CRUD Ready — tell Ultron to <strong className="text-white">create</strong>,{' '}
+                      <strong className="text-white">read</strong>,{' '}
+                      <strong className="text-white">edit/update</strong>, or{' '}
+                      <strong className="text-white">delete/undo</strong> any CSS style, widget,
+                      DOM element, script, or code file!
+                    </div>
+                  )}
+
+                  {/* 1. CSS PATCHES (READ / UPDATE / DELETE) */}
+                  {(codeState.liveCss.trim() || codeState.cssPatches.length > 0) && (
+                    <div className="space-y-1">
+                      <div className="text-[8px] text-cyan-300 uppercase tracking-wider">
+                        CSS PATCHES (
+                        {codeState.cssPatches.length + (codeState.liveCss.trim() ? 1 : 0)})
+                      </div>
+                      {codeState.liveCss.trim() && (
+                        <div className="p-1.5 border border-cyan-400/35 bg-black/45 text-[9px] space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-cyan-200 font-bold">[GLOBAL_CSS]</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCrudKey('css:__legacy__');
+                                  setEditDraftCode(codeState.liveCss);
+                                }}
+                                className="text-amber-300 hover:text-white cursor-pointer"
+                                title="Edit Global CSS"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onExecuteCrudCode({
+                                    removeCssPatchIds: ['__legacy__'],
+                                    summary: 'Deleted global live CSS',
+                                  })
+                                }
+                                className="text-red-300 hover:text-white cursor-pointer"
+                                title="Delete Global CSS"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                          {editingCrudKey === 'css:__legacy__' ? (
+                            <div className="space-y-1">
+                              <textarea
+                                rows={4}
+                                value={editDraftCode}
+                                onChange={(e) => setEditDraftCode(e.target.value)}
+                                className="w-full bg-black/80 border border-cyan-400/60 p-1 text-[8.5px] text-cyan-100 focus:outline-none"
+                              />
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingCrudKey(null)}
+                                  className="px-1.5 py-0.5 border border-white/20 text-[8px] text-red-200 cursor-pointer"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await onExecuteCrudCode({
+                                      liveCss: editDraftCode,
+                                      appendCss: false,
+                                      summary: 'Edited global live CSS',
+                                    });
+                                    setEditingCrudKey(null);
+                                  }}
+                                  className="px-1.5 py-0.5 border border-emerald-400/70 bg-emerald-900/50 text-[8px] text-white flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <Save className="w-2.5 h-2.5" />
+                                  <span>SAVE</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <pre className="text-[8px] text-red-100/80 whitespace-pre-wrap break-all max-h-14 overflow-hidden">
+                              {codeState.liveCss.slice(0, 180)}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+
+                      {codeState.cssPatches.map((p) => {
+                        const key = `css:${p.id}`;
+                        return (
+                          <div
+                            key={p.id}
+                            className="p-1.5 border border-cyan-400/35 bg-black/45 text-[9px] space-y-1"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-cyan-200 font-bold truncate">#{p.id}</span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCrudKey(key);
+                                    setEditDraftCode(p.css);
+                                  }}
+                                  className="text-amber-300 hover:text-white cursor-pointer"
+                                  title="Edit CSS Patch"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onExecuteCrudCode({
+                                      removeCssPatchIds: [p.id],
+                                      summary: `Deleted CSS patch [${p.id}]`,
+                                    })
+                                  }
+                                  className="text-red-300 hover:text-white cursor-pointer"
+                                  title="Delete CSS Patch"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                            {editingCrudKey === key ? (
+                              <div className="space-y-1">
+                                <textarea
+                                  rows={4}
+                                  value={editDraftCode}
+                                  onChange={(e) => setEditDraftCode(e.target.value)}
+                                  className="w-full bg-black/80 border border-cyan-400/60 p-1 text-[8.5px] text-cyan-100 focus:outline-none"
+                                />
+                                <div className="flex justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCrudKey(null)}
+                                    className="px-1.5 py-0.5 border border-white/20 text-[8px] text-red-200 cursor-pointer"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await onExecuteCrudCode({
+                                        cssPatch: { id: p.id, css: editDraftCode },
+                                        summary: `Updated CSS patch [${p.id}]`,
+                                      });
+                                      setEditingCrudKey(null);
+                                    }}
+                                    className="px-1.5 py-0.5 border border-emerald-400/70 bg-emerald-900/50 text-[8px] text-white flex items-center gap-0.5 cursor-pointer"
+                                  >
+                                    <Save className="w-2.5 h-2.5" />
+                                    <span>SAVE</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <pre className="text-[8px] text-red-100/80 whitespace-pre-wrap break-all max-h-14 overflow-hidden">
+                                {p.css.slice(0, 180)}
+                              </pre>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* 2. WIDGETS (READ / UPDATE / DELETE) */}
+                  {codeState.widgets.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-[8px] text-amber-300 uppercase tracking-wider">
+                        WIDGETS ({codeState.widgets.length})
+                      </div>
+                      {codeState.widgets.map((w) => {
+                        const key = `wid:${w.id}`;
+                        return (
+                          <div
+                            key={w.id}
+                            className="p-1.5 border border-amber-400/40 bg-black/45 text-[9px] space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-amber-200 font-bold truncate">
+                                {w.title} <span className="text-white/50">({w.id})</span>
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCrudKey(key);
+                                    setEditDraftTitle(w.title);
+                                    setEditDraftCode(w.html);
+                                    setEditDraftJs(w.js || '');
+                                  }}
+                                  className="text-amber-300 hover:text-white cursor-pointer"
+                                  title="Edit Widget HTML/JS"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onExecuteCrudCode({
+                                      removeWidgetIds: [w.id],
+                                      summary: `Deleted widget "${w.title}"`,
+                                    })
+                                  }
+                                  className="text-red-300 hover:text-white cursor-pointer"
+                                  title="Delete Widget"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                            {editingCrudKey === key ? (
+                              <div className="space-y-1">
+                                <input
+                                  value={editDraftTitle}
+                                  onChange={(e) => setEditDraftTitle(e.target.value)}
+                                  placeholder="Widget Title"
+                                  className="w-full bg-black/80 border border-amber-400/60 px-1 py-0.5 text-[8.5px] text-white"
+                                />
+                                <textarea
+                                  rows={3}
+                                  value={editDraftCode}
+                                  onChange={(e) => setEditDraftCode(e.target.value)}
+                                  placeholder="HTML"
+                                  className="w-full bg-black/80 border border-amber-400/60 p-1 text-[8px] text-amber-100"
+                                />
+                                <textarea
+                                  rows={3}
+                                  value={editDraftJs}
+                                  onChange={(e) => setEditDraftJs(e.target.value)}
+                                  placeholder="JS (optional)"
+                                  className="w-full bg-black/80 border border-amber-400/40 p-1 text-[8px] text-cyan-100"
+                                />
+                                <div className="flex justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCrudKey(null)}
+                                    className="px-1.5 py-0.5 border border-white/20 text-[8px] text-red-200 cursor-pointer"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await onExecuteCrudCode({
+                                        updateWidget: {
+                                          id: w.id,
+                                          title: editDraftTitle,
+                                          html: editDraftCode,
+                                          js: editDraftJs,
+                                        },
+                                        summary: `Edited widget "${editDraftTitle}"`,
+                                      });
+                                      setEditingCrudKey(null);
+                                    }}
+                                    className="px-1.5 py-0.5 border border-emerald-400/70 bg-emerald-900/50 text-[8px] text-white flex items-center gap-0.5 cursor-pointer"
+                                  >
+                                    <Save className="w-2.5 h-2.5" />
+                                    <span>SAVE</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-[8px] text-red-200/75 truncate">
+                                Target: {w.targetSelector || 'Top Deck'}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* 3. REVERSIBLE NATIVE DOM OVERRIDES */}
+                  {codeState.domPatches.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-[8px] text-pink-300 uppercase tracking-wider">
+                        DOM OVERRIDES ({codeState.domPatches.length})
+                      </div>
+                      {codeState.domPatches.map((d) => (
+                        <div
+                          key={d.id}
+                          className="p-1.5 border border-pink-400/40 bg-black/45 text-[9px] flex items-center justify-between gap-1"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-pink-200 font-bold truncate">
+                              {d.action} → {d.selector}
+                            </div>
+                            {d.value && (
+                              <div className="text-[8px] text-white/75 truncate">{d.value}</div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onExecuteCrudCode({
+                                removeDomPatchIds: [d.id],
+                                summary: `Reverted DOM override [${d.id}]`,
+                              })
+                            }
+                            className="text-red-300 hover:text-white shrink-0 cursor-pointer"
+                            title="Revert & Restore Original DOM Element"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 4. PERSISTENT SCRIPTS */}
+                  {(codeState.persistentJs.trim() || codeState.scripts.length > 0) && (
+                    <div className="space-y-1">
+                      <div className="text-[8px] text-emerald-300 uppercase tracking-wider">
+                        SCRIPTS (
+                        {codeState.scripts.length + (codeState.persistentJs.trim() ? 1 : 0)})
+                      </div>
+                      {codeState.persistentJs.trim() && (
+                        <div className="p-1.5 border border-emerald-400/40 bg-black/45 text-[9px] flex items-center justify-between gap-1">
+                          <span className="text-emerald-200 truncate">[GLOBAL_SCRIPT]</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onExecuteCrudCode({
+                                removeScriptIds: ['__legacy__'],
+                                summary: 'Stopped & deleted global script',
+                              })
+                            }
+                            className="text-red-300 hover:text-white cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                      {codeState.scripts.map((s) => (
+                        <div
+                          key={s.id}
+                          className="p-1.5 border border-emerald-400/40 bg-black/45 text-[9px] flex items-center justify-between gap-1"
+                        >
+                          <span className="text-emerald-200 truncate">
+                            {s.title || s.id}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onExecuteCrudCode({
+                                removeScriptIds: [s.id],
+                                summary: `Stopped & deleted script [${s.id}]`,
+                              })
+                            }
+                            className="text-red-300 hover:text-white cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 5. VIRTUAL WORKSPACE FILES */}
+                  {codeState.files.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-[8px] text-purple-300 uppercase tracking-wider">
+                        WORKSPACE FILES ({codeState.files.length})
+                      </div>
+                      {codeState.files.map((f) => {
+                        const key = `file:${f.name}`;
+                        return (
+                          <div
+                            key={f.name}
+                            className="p-1.5 border border-purple-400/40 bg-black/45 text-[9px] space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-purple-200 font-bold flex items-center gap-1 truncate">
+                                <FileCode className="w-3 h-3 shrink-0" />
+                                {f.name}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCrudKey(editingCrudKey === key ? null : key);
+                                    setEditDraftCode(f.content);
+                                  }}
+                                  className="text-amber-300 hover:text-white cursor-pointer"
+                                  title="Read / Edit File"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    triggerFileDownload(f.name, f.content, f.mimeType)
+                                  }
+                                  className="text-cyan-300 hover:text-white cursor-pointer"
+                                  title="Download File"
+                                >
+                                  <Download className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onExecuteCrudCode({
+                                      deleteFileNames: [f.name],
+                                      summary: `Deleted file "${f.name}"`,
+                                    })
+                                  }
+                                  className="text-red-300 hover:text-white cursor-pointer"
+                                  title="Delete File"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                            {editingCrudKey === key && (
+                              <div className="space-y-1">
+                                <textarea
+                                  rows={5}
+                                  value={editDraftCode}
+                                  onChange={(e) => setEditDraftCode(e.target.value)}
+                                  className="w-full bg-black/80 border border-purple-400/60 p-1 text-[8px] text-purple-100 focus:outline-none"
+                                />
+                                <div className="flex justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCrudKey(null)}
+                                    className="px-1.5 py-0.5 border border-white/20 text-[8px] text-red-200 cursor-pointer"
+                                  >
+                                    CLOSE
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await onExecuteCrudCode({
+                                        saveFile: { name: f.name, content: editDraftCode },
+                                        summary: `Updated file "${f.name}"`,
+                                      });
+                                      setEditingCrudKey(null);
+                                    }}
+                                    className="px-1.5 py-0.5 border border-emerald-400/70 bg-emerald-900/50 text-[8px] text-white cursor-pointer"
+                                  >
+                                    SAVE FILE
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* ACTIVITY LOG */}
+                  <div className="text-[8.5px] text-amber-300 border-t border-white/15 pt-1.5">
+                    ACTIVITY LOG ({autonomousLog.length})
+                  </div>
+                  {autonomousLog.slice(0, 18).map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="p-1.5 border border-white/20 bg-black/40 text-[9px] space-y-0.5"
+                    >
+                      <div className="flex items-center justify-between text-[8px] text-amber-300/90">
+                        <span className="uppercase">[{entry.category}]</span>
+                        <span>{entry.timestamp.slice(11, 19)}</span>
+                      </div>
+                      <div className="text-white/95 leading-snug">{entry.summary}</div>
+                    </div>
+                  ))}
                 </div>
               )}
 
