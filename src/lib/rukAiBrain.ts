@@ -455,6 +455,38 @@ async function callExternalLLM(
     );
   }
 
+  if (brain.provider === 'groq' && !brain.apiKey.trim()) {
+    const model = brain.model.trim() || 'llama-3.3-70b-versatile';
+    const payload = JSON.stringify({
+      systemPrompt,
+      userPayload: xmlUserPayload,
+      model,
+    });
+
+    // 1. Try same-origin serverless /api/chat (active on Vercel production)
+    let res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    }).catch(() => null);
+
+    const isJson = res && (res.headers.get('content-type') || '').includes('application/json');
+    if (!res || res.status === 404 || !isJson) {
+      // 2. Fallback for local preview sandbox -> call deployed Vercel /api/chat
+      res = await fetch('https://ultron-personal-ai.vercel.app/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      });
+    }
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || `Groq proxy ${res.status}`);
+    }
+    return data?.content || '';
+  }
+
   if (brain.provider === 'groq' || brain.provider === 'openai' || brain.provider === 'openrouter') {
     const endpoint =
       brain.provider === 'groq'
@@ -559,7 +591,9 @@ export async function processRukAiTurn(params: {
 
   const useExternal =
     brainConfig.provider !== 'autonomous_local' &&
-    (brainConfig.provider === 'ollama' || Boolean(brainConfig.apiKey.trim()));
+    (brainConfig.provider === 'ollama' ||
+      brainConfig.provider === 'groq' ||
+      Boolean(brainConfig.apiKey.trim()));
 
   if (useExternal) {
     try {

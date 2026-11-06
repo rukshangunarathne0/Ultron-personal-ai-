@@ -21,7 +21,7 @@ import { ultronVoice } from './lib/voiceEngine';
 
 const LOCAL_STORAGE_STATE_KEY = 'ruk_ai_ultron_state_v1';
 const LOCAL_STORAGE_VOICE_KEY = 'ruk_ai_voice_cfg_v1';
-const LOCAL_STORAGE_BRAIN_KEY = 'ruk_ai_brain_cfg_v1';
+const LOCAL_STORAGE_BRAIN_KEY = 'ruk_ai_brain_cfg_v2';
 
 const DEFAULT_VOICE_CONFIG: VoiceConfig = {
   provider: 'browser_ultron',
@@ -40,9 +40,9 @@ const DEFAULT_VOICE_CONFIG: VoiceConfig = {
 };
 
 const DEFAULT_BRAIN_CONFIG: BrainConfig = {
-  provider: 'autonomous_local',
+  provider: 'groq',
   apiKey: '',
-  model: 'ruk-local-v1',
+  model: 'llama-3.3-70b-versatile',
   ollamaUrl: 'http://localhost:11434',
 };
 

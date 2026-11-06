@@ -433,9 +433,18 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
 
               {brainConfig.provider !== 'autonomous_local' && brainConfig.provider !== 'ollama' && (
                 <div className="p-3.5 border border-red-500/35 bg-black/40 space-y-2.5">
+                  {brainConfig.provider === 'groq' && !brainConfig.apiKey.trim() && (
+                    <div className="p-2 border border-emerald-500/45 bg-emerald-950/30 font-mono-tech text-[11px] text-emerald-300">
+                      ✓ GROQ CLOUD KEY PRE-CONNECTED ON SERVER (llama-3.3-70b-versatile active).
+                      Leave blank to use your connected server key, or paste another key below to override.
+                    </div>
+                  )}
                   <div>
                     <label className="block font-mono-tech text-[11px] text-red-300 mb-1">
-                      {brainConfig.provider.toUpperCase()} API Key (stored locally in your browser):
+                      {brainConfig.provider.toUpperCase()} API Key{' '}
+                      {brainConfig.provider === 'groq'
+                        ? '(optional override — server key already active):'
+                        : '(stored locally in your browser):'}
                     </label>
                     <input
                       type="password"
