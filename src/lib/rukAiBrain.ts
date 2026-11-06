@@ -599,9 +599,20 @@ async function callExternalLLM(
     const tryModels =
       brain.provider === 'groq'
         ? Array.from(new Set([requestedModel, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b']))
+        : brain.provider === 'openrouter'
+        ? Array.from(
+            new Set([
+              requestedModel,
+              'deepseek/deepseek-chat-v3-0324:free',
+              'qwen/qwen3-coder:free',
+              'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+              'cognitivecomputations/dolphin3.0-mistral-24b:free',
+            ])
+          )
         : [requestedModel];
 
     let lastErr = '';
+    let lastRefusal = '';
     for (const candidateModel of tryModels) {
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -620,11 +631,17 @@ async function callExternalLLM(
       });
       if (res.ok) {
         const data = await res.json();
-        return data?.choices?.[0]?.message?.content || '';
+        const content = String(data?.choices?.[0]?.message?.content || '').trim();
+        if (CANNED_MODEL_REFUSAL_RE.test(content) && tryModels.length > 1) {
+          lastRefusal = content;
+          continue;
+        }
+        return content;
       }
       lastErr = `${brain.provider.toUpperCase()} API ${res.status}: ${(await res.text()).slice(0, 180)}`;
       if (res.status === 401) break;
     }
+    if (lastRefusal) return lastRefusal;
     throw new Error(lastErr);
   }
 
