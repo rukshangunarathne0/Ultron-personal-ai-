@@ -481,6 +481,53 @@ async function callExternalLLM(
     );
   }
 
+  if (brain.provider === 'pollinations') {
+    const model = brain.model.trim() || 'qwen-coder';
+    // Try direct browser call to Pollinations Zero-Key OpenAI API first, then serverless /api/chat
+    const directRes = await fetch('https://text.pollinations.ai/openai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        temperature: 0.35,
+        private: true,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: xmlUserPayload },
+        ],
+      }),
+    }).catch(() => null);
+
+    if (directRes && directRes.ok) {
+      const data = await directRes.json();
+      const txt = data?.choices?.[0]?.message?.content || '';
+      if (txt) return txt;
+    }
+
+    const proxyPayload = JSON.stringify({
+      provider: 'pollinations',
+      model,
+      systemPrompt,
+      userPayload: xmlUserPayload,
+    });
+    const proxyRes =
+      (await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: proxyPayload,
+      }).catch(() => null)) ||
+      (await fetch('https://ultron-personal-ai.vercel.app/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: proxyPayload,
+      }));
+    const proxyData = await proxyRes.json();
+    if (!proxyRes.ok) {
+      throw new Error(proxyData?.error || `Pollinations ${proxyRes.status}`);
+    }
+    return proxyData?.content || '';
+  }
+
   if (brain.provider === 'groq' && !brain.apiKey.trim()) {
     const model = brain.model.trim() || 'openai/gpt-oss-120b';
     const payload = JSON.stringify({
@@ -513,19 +560,33 @@ async function callExternalLLM(
     return data?.content || '';
   }
 
-  if (brain.provider === 'groq' || brain.provider === 'openai' || brain.provider === 'openrouter') {
+  if (
+    brain.provider === 'groq' ||
+    brain.provider === 'openai' ||
+    brain.provider === 'openrouter' ||
+    brain.provider === 'mistral' ||
+    brain.provider === 'cerebras'
+  ) {
     const endpoint =
       brain.provider === 'groq'
         ? 'https://api.groq.com/openai/v1/chat/completions'
         : brain.provider === 'openrouter'
         ? 'https://openrouter.ai/api/v1/chat/completions'
+        : brain.provider === 'mistral'
+        ? 'https://api.mistral.ai/v1/chat/completions'
+        : brain.provider === 'cerebras'
+        ? 'https://api.cerebras.ai/v1/chat/completions'
         : 'https://api.openai.com/v1/chat/completions';
 
     const defaultModel =
       brain.provider === 'groq'
         ? 'openai/gpt-oss-120b'
         : brain.provider === 'openrouter'
-        ? 'openai/gpt-oss-120b'
+        ? 'qwen/qwen3-coder:free'
+        : brain.provider === 'mistral'
+        ? 'codestral-latest'
+        : brain.provider === 'cerebras'
+        ? 'llama-3.3-70b'
         : 'gpt-4o-mini';
 
     const requestedModel =
@@ -652,7 +713,49 @@ function detectLocalSovereignOverride(userText: string): UltronActionPayload | u
     changed = true;
   }
 
+  if (/\b(switch|go|enable|turn\s+on|show|force)\b.*\b(mobile\s*view|phone\s*view|mobile\s*mode|mobile\s*layout)\b/.test(low)) {
+    action.ui = { ...action.ui, mobileViewMode: 'force_mobile' };
+    changed = true;
+  } else if (/\b(switch|go|back|return|force)\b.*\b(desktop\s*view|pc\s*view|desktop\s*mode|desktop\s*layout)\b/.test(low)) {
+    action.ui = { ...action.ui, mobileViewMode: 'force_desktop' };
+    changed = true;
+  } else if (/\b(auto\s*view|responsive\s*auto)\b/.test(low)) {
+    action.ui = { ...action.ui, mobileViewMode: 'auto' };
+    changed = true;
+  }
+
   return changed ? action : undefined;
+}
+
+/**
+ * Strict Command-Only Gate:
+ * Returns true ONLY when Rukshan actually commanded Ultron to change UI, mobile view, theme,
+ * layout, styling, widgets, live code, JS execution, or downloadable files!
+ */
+export function didUserCommandUiOrCode(userText: string): {
+  allowUiMutation: boolean;
+  allowVoiceMutation: boolean;
+  allowCodeExecution: boolean;
+} {
+  const low = userText.toLowerCase();
+
+  const allowUiMutation =
+    /\b(ui|hud|theme|color|colour|layout|panel|wing|mobile|phone|desktop|screen|view|style|css|font|border|background|button|nav|bar|header|footer|compact|bigger|smaller|hide|show|move|swap|flip|reset|redesign|customize|change|modify|update|make\s+(?:it|the|your)|18\+|safesearch|adult)\b/.test(
+      low
+    );
+
+  const allowVoiceMutation =
+    /\b(voice|pitch|bass|tone|speak|sound|scarier|deeper|robotic|mp3|orpheus|troy|daniel|austin|mute|unmute)\b/.test(
+      low
+    );
+
+  const allowCodeExecution =
+    allowUiMutation ||
+    /\b(code|coding|script|javascript|js|html|css|widget|module|clock|timer|calculator|weather|build|create|add|remove|clear|patch|fix|write|generate|download|file|\.py|\.js|\.html|\.json|calculate|compute|run)\b/.test(
+      low
+    );
+
+  return { allowUiMutation, allowVoiceMutation, allowCodeExecution };
 }
 
 const CANNED_MODEL_REFUSAL_RE =
@@ -1006,6 +1109,7 @@ export async function processRukAiTurn(params: {
     brainConfig.provider !== 'autonomous_local' &&
     (brainConfig.provider === 'ollama' ||
       brainConfig.provider === 'groq' ||
+      brainConfig.provider === 'pollinations' ||
       Boolean(brainConfig.apiKey.trim()));
 
   if (useExternal) {
@@ -1162,8 +1266,24 @@ export async function processRukAiTurn(params: {
     }
   }
 
-  const ultronAction = modelAction || detectLocalSovereignOverride(requestText);
-  const ultronCode = modelCode || detectLocalCodeFallback(requestText);
+  const rawAction = modelAction || detectLocalSovereignOverride(requestText);
+  const rawCode = modelCode || detectLocalCodeFallback(requestText);
+
+  // Enforce Rukshan's strict Command-Only UI & Code Rule:
+  // Never mutate UI, voice, or DOM code unless Rukshan explicitly asked for it!
+  const gate = didUserCommandUiOrCode(requestText);
+  let ultronAction: UltronActionPayload | undefined;
+  if (rawAction) {
+    const filtered: UltronActionPayload = {};
+    if (rawAction.ui && gate.allowUiMutation) filtered.ui = rawAction.ui;
+    if (rawAction.voice && gate.allowVoiceMutation) filtered.voice = rawAction.voice;
+    if (rawAction.tasks) filtered.tasks = rawAction.tasks;
+    if (rawAction.reason) filtered.reason = rawAction.reason;
+    if (filtered.ui || filtered.voice || filtered.tasks) {
+      ultronAction = filtered;
+    }
+  }
+  const ultronCode = gate.allowCodeExecution ? rawCode : undefined;
   await delay(90);
 
   // STEP 6 - UPDATE MEMORY

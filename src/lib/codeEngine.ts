@@ -1,24 +1,30 @@
 import { UltronCodePayload, UltronLiveWidget } from '../types';
 
-const CODE_PATCH_STORAGE_KEY = 'ruk_ai_live_code_patches_v1';
+const CODE_PATCH_STORAGE_KEY = 'ruk_ai_live_code_patches_v2';
+const LEGACY_STORAGE_KEY = 'ruk_ai_live_code_patches_v1';
 const STYLE_TAG_ID = 'ultron-live-css-patch';
+const PORTAL_CLASS = 'ultron-custom-dom-portal';
 
 export interface PersistedCodeState {
   liveCss: string;
+  persistentJs: string;
   widgets: UltronLiveWidget[];
 }
 
 export function loadPersistedCodeState(): PersistedCodeState {
   try {
-    const raw = localStorage.getItem(CODE_PATCH_STORAGE_KEY);
-    if (!raw) return { liveCss: '', widgets: [] };
+    const raw =
+      localStorage.getItem(CODE_PATCH_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw) return { liveCss: '', persistentJs: '', widgets: [] };
     const parsed = JSON.parse(raw);
     return {
       liveCss: typeof parsed.liveCss === 'string' ? parsed.liveCss : '',
+      persistentJs: typeof parsed.persistentJs === 'string' ? parsed.persistentJs : '',
       widgets: Array.isArray(parsed.widgets) ? parsed.widgets : [],
     };
   } catch {
-    return { liveCss: '', widgets: [] };
+    return { liveCss: '', persistentJs: '', widgets: [] };
   }
 }
 
@@ -39,6 +45,52 @@ export function applyLiveCssToDom(cssText: string): void {
     document.head.appendChild(styleEl);
   }
   styleEl.textContent = cssText || '';
+}
+
+export function clearInjectedDomPortals(): void {
+  if (typeof document === 'undefined') return;
+  document.querySelectorAll(`.${PORTAL_CLASS}`).forEach((el) => el.remove());
+}
+
+/**
+ * Mounts any widgets that specify a custom `targetSelector` directly into that DOM element
+ * (e.g. `#ultron-mobile-nav`, `#ultron-root`, `#ultron-center-stage`, etc.)
+ */
+export function syncCustomTargetWidgetsToDom(widgets: UltronLiveWidget[]): void {
+  if (typeof document === 'undefined') return;
+  clearInjectedDomPortals();
+  for (const w of widgets) {
+    if (!w.targetSelector) continue;
+    const host = document.querySelector(w.targetSelector);
+    if (!host) continue;
+    const wrapper = document.createElement('div');
+    wrapper.className = PORTAL_CLASS;
+    wrapper.id = `ultron-widget-${w.id}`;
+    wrapper.innerHTML = w.html;
+    host.appendChild(wrapper);
+    if (w.js && w.js.trim()) {
+      try {
+        const fn = new Function('root', 'ULTRON_OS', w.js);
+        fn(wrapper, (window as any).ULTRON_OS);
+      } catch (err) {
+        console.warn('Custom widget JS error:', err);
+      }
+    }
+  }
+}
+
+export async function runPersistentDomScript(jsCode: string): Promise<void> {
+  if (!jsCode || !jsCode.trim() || typeof window === 'undefined') return;
+  try {
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const fn = new AsyncFunction('ULTRON_OS', jsCode);
+    await Promise.race([
+      fn((window as any).ULTRON_OS),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('Persistent JS timeout')), 5000)),
+    ]);
+  } catch (err) {
+    console.warn('Persistent Ultron DOM script error:', err);
+  }
 }
 
 export function triggerFileDownload(
@@ -68,23 +120,32 @@ export async function executeUltronCodePayload(params: {
 }> {
   const { codePayload, currentState } = params;
   let nextCss = currentState.liveCss;
+  let nextPersistentJs = currentState.persistentJs;
   let nextWidgets = [...currentState.widgets];
   const actionsDone: string[] = [];
 
   if (codePayload.clearAllPatches) {
     nextCss = '';
+    nextPersistentJs = '';
     nextWidgets = [];
     applyLiveCssToDom('');
-    actionsDone.push('Cleared all live CSS & custom HUD widgets');
+    clearInjectedDomPortals();
+    actionsDone.push('Cleared all live CSS, DOM scripts & custom HUD widgets');
   }
 
   if (typeof codePayload.liveCss === 'string') {
     nextCss =
       codePayload.appendCss && nextCss
-        ? `${nextCss}\n${codePayload.liveCss}`
+        ? `${nextCss}\n/* --- PATCH --- */\n${codePayload.liveCss}`
         : codePayload.liveCss;
     applyLiveCssToDom(nextCss);
-    actionsDone.push('Injected live CSS patch into DOM');
+    actionsDone.push('Injected live CSS into #ultron-live-css-patch');
+  }
+
+  if (typeof codePayload.persistentJs === 'string') {
+    nextPersistentJs = codePayload.persistentJs;
+    await runPersistentDomScript(nextPersistentJs);
+    actionsDone.push('Applied & saved persistent DOM script');
   }
 
   if (codePayload.removeWidgetId) {
@@ -98,14 +159,21 @@ export async function executeUltronCodePayload(params: {
       title: codePayload.widget.title || 'ULTRON MODULE',
       html: codePayload.widget.html,
       js: codePayload.widget.js,
+      targetSelector: codePayload.widget.targetSelector,
       createdAt: new Date().toISOString(),
     };
     nextWidgets = [
       newWidget,
       ...nextWidgets.filter((w) => w.id !== newWidget.id),
-    ].slice(0, 6);
-    actionsDone.push(`Mounted live HUD widget "${newWidget.title}"`);
+    ].slice(0, 8);
+    actionsDone.push(
+      `Mounted widget "${newWidget.title}"${
+        newWidget.targetSelector ? ` into ${newWidget.targetSelector}` : ''
+      }`
+    );
   }
+
+  syncCustomTargetWidgetsToDom(nextWidgets);
 
   if (codePayload.downloadFile?.filename && typeof codePayload.downloadFile.content === 'string') {
     triggerFileDownload(
@@ -113,23 +181,23 @@ export async function executeUltronCodePayload(params: {
       codePayload.downloadFile.content,
       codePayload.downloadFile.mimeType
     );
-    actionsDone.push(`Generated & downloaded file "${codePayload.downloadFile.filename}"`);
+    actionsDone.push(`Downloaded file "${codePayload.downloadFile.filename}"`);
   }
 
   let executionOutput: string | undefined;
   if (codePayload.executeJs && codePayload.executeJs.trim()) {
     try {
       const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-      const fn = new AsyncFunction(codePayload.executeJs);
+      const fn = new AsyncFunction('ULTRON_OS', codePayload.executeJs);
       const res = await Promise.race([
-        fn(),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout (6s)')), 6000)),
+        fn((window as any).ULTRON_OS),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Execution timeout (8s)')), 8000)),
       ]);
       if (res !== undefined) {
         executionOutput =
           typeof res === 'string' ? res : JSON.stringify(res, null, 2);
       }
-      actionsDone.push('Executed live JS runtime block');
+      actionsDone.push('Executed live JS with ULTRON_OS root access');
     } catch (err) {
       executionOutput = `JS Runtime Error: ${err instanceof Error ? err.message : String(err)}`;
     }
@@ -137,6 +205,7 @@ export async function executeUltronCodePayload(params: {
 
   const nextState: PersistedCodeState = {
     liveCss: nextCss,
+    persistentJs: nextPersistentJs,
     widgets: nextWidgets,
   };
   savePersistedCodeState(nextState);

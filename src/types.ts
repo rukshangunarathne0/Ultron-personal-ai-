@@ -36,11 +36,15 @@ export type UltronThemeId =
 
 export type UltronLayoutMode = 'standard' | 'swapped_wings' | 'cinema_focus';
 export type UltronAvatarPresence = 'compact' | 'commanding' | 'recessed';
+export type UltronMobileViewMode = 'auto' | 'force_mobile' | 'force_desktop';
+export type UltronMobilePanel = 'stage' | 'controls' | 'details';
 
 export interface UltronUiConfig {
   theme: UltronThemeId;
   layoutMode: UltronLayoutMode;
   avatarPresence: UltronAvatarPresence;
+  mobileViewMode: UltronMobileViewMode;
+  mobileActivePanel: UltronMobilePanel;
   hudDesignation: string;
   statusBanner: string;
   bgOverdrive: number;
@@ -135,17 +139,20 @@ export interface UltronLiveWidget {
   title: string;
   html: string;
   js?: string;
+  targetSelector?: string;
   createdAt: string;
 }
 
 export interface UltronCodePayload {
   liveCss?: string;
   appendCss?: boolean;
+  persistentJs?: string;
   widget?: {
     id: string;
     title: string;
     html: string;
     js?: string;
+    targetSelector?: string;
   };
   removeWidgetId?: string;
   clearAllPatches?: boolean;
@@ -268,7 +275,16 @@ export interface VoiceConfig {
   customEndpointUrl: string;
 }
 
-export type BrainProvider = 'autonomous_local' | 'gemini' | 'groq' | 'openai' | 'openrouter' | 'ollama';
+export type BrainProvider =
+  | 'groq'
+  | 'pollinations'
+  | 'openrouter'
+  | 'gemini'
+  | 'mistral'
+  | 'cerebras'
+  | 'openai'
+  | 'ollama'
+  | 'autonomous_local';
 
 export interface BrainConfig {
   provider: BrainProvider;

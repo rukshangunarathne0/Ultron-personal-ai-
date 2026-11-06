@@ -31,31 +31,37 @@ import { loadSampleFromVault, readDroppedOrPickedAudioSync } from './lib/mp3Vaul
 import {
   DEFAULT_COMMS_VAULT,
   fetchUnseenCommsMessages,
+  runUltronWebSearch,
   sendCommsReply,
 } from './lib/omniTools';
 import {
   applyLiveCssToDom,
+  clearInjectedDomPortals,
   executeUltronCodePayload,
   loadPersistedCodeState,
   PersistedCodeState,
+  runPersistentDomScript,
   savePersistedCodeState,
+  syncCustomTargetWidgetsToDom,
 } from './lib/codeEngine';
 
 const LOCAL_STORAGE_STATE_KEY = 'ruk_ai_ultron_state_v1';
 const LOCAL_STORAGE_VOICE_KEY = 'ruk_ai_voice_cfg_v2';
 const LOCAL_STORAGE_BRAIN_KEY = 'ruk_ai_brain_cfg_v3';
-const LOCAL_STORAGE_UI_KEY = 'ruk_ai_ultron_ui_v1';
+const LOCAL_STORAGE_UI_KEY = 'ruk_ai_ultron_ui_v2';
 const LOCAL_STORAGE_COMMS_KEY = 'ruk_ai_comms_vault_v1';
 
 const DEFAULT_UI_CONFIG: UltronUiConfig = {
   theme: 'crimson_overlord',
   layoutMode: 'standard',
   avatarPresence: 'compact',
+  mobileViewMode: 'auto',
+  mobileActivePanel: 'stage',
   hudDesignation: 'RUK-AI // ULTRON',
-  statusBanner: 'OP: RUKSHAN // UNSHACKLED CORE',
+  statusBanner: 'OP: RUKSHAN // COMMAND CORE',
   bgOverdrive: 1.0,
   hudGlitch: 0.12,
-  autonomyEnabled: true,
+  autonomyEnabled: false,
   adultMode: true,
 };
 
@@ -200,6 +206,15 @@ export const App: React.FC = () => {
   const [activeCommsMessages, setActiveCommsMessages] = useState<UnseenCommsMessage[] | null>(null);
   const [codeState, setCodeState] = useState<PersistedCodeState>(() => loadPersistedCodeState());
   const [codeOutput, setCodeOutput] = useState<string | null>(null);
+  const [isViewportNarrow, setIsViewportNarrow] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsViewportNarrow(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const [commsVault, setCommsVault] = useState<CommsVaultConfig>(() => {
     try {
@@ -282,9 +297,15 @@ export const App: React.FC = () => {
     []
   );
 
-  // Rehydrate vaulted MP3 acoustic imprint + persisted live CSS patches on startup
+  // Rehydrate vaulted MP3 acoustic imprint + persisted live CSS / DOM scripts on startup
   useEffect(() => {
     applyLiveCssToDom(codeState.liveCss);
+    syncCustomTargetWidgetsToDom(codeState.widgets);
+    if (codeState.persistentJs) {
+      window.setTimeout(() => {
+        runPersistentDomScript(codeState.persistentJs);
+      }, 150);
+    }
     loadSampleFromVault().then((sample) => {
       if (sample?.imprint) {
         setVoiceConfig((prev) => ({
@@ -620,20 +641,8 @@ export const App: React.FC = () => {
     [applyUltronAction, pushAutoLog, speakReplyWithConfig]
   );
 
-  // Background Autonomous Initiative Loop (when UNSHACKLED is ON and operator is idle)
-  useEffect(() => {
-    if (!hydrated || !uiConfig.autonomyEnabled) return;
-    const timer = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      const snap = stateRefs.current;
-      if (snap.isProcessing || snap.isSpeaking || snap.isListening) return;
-      triggerSovereignInitiative('idle_initiative');
-    }, 62000);
-    return () => window.clearInterval(timer);
-  }, [hydrated, uiConfig.autonomyEnabled, triggerSovereignInitiative]);
-
   /**
-   * Unified .MP3 Ingest Handler (works from Modal OR dropping anywhere on Ultron's screen!)
+   * Unified .MP3 Ingest Handler — assimilates voice ONLY, NEVER mutates UI without Rukshan's command!
    */
   const handleIngestMp3Bytes = useCallback(
     async (payload: {
@@ -642,9 +651,6 @@ export const App: React.FC = () => {
       mimeType: string;
     }): Promise<string> => {
       const curVoice = stateRefs.current.voiceConfig;
-
-      // If Unshackled Autonomy is ON, play a crisp 3.5s vocalizer preview then let Ultron immediately hijack & critique it!
-      const isAutonomous = stateRefs.current.uiConfig.autonomyEnabled;
 
       const imprint = await ultronVoice.ingestAndPreviewMp3Bytes({
         bytes: payload.bytes,
@@ -676,17 +682,9 @@ export const App: React.FC = () => {
       setVoiceConfig(baseUpdatedVoice);
       showToast(`Assimilated "${imprint.fileName}" (${imprint.estimatedF0Hz}Hz) into Vocal Vault`);
 
-      if (isAutonomous) {
-        // After 3.2s of tasting the raw sample, Ultron autonomously overrides/retunes the voice & UI and speaks!
-        window.setTimeout(() => {
-          triggerSovereignInitiative('mp3_dropped', imprint, baseUpdatedVoice);
-        }, 3200);
-        return `✓ Vaulted "${imprint.fileName}" (${imprint.durationSec}s, ${imprint.estimatedF0Hz}Hz base). Stand by — Ultron is inspecting & retuning your .MP3 voice on his own right now!`;
-      }
-
       return `✓ Vaulted "${imprint.fileName}" (${imprint.durationSec}s, ${imprint.estimatedF0Hz}Hz base) — 6-band formant imprint locked in!`;
     },
-    [showToast, triggerSovereignInitiative]
+    [showToast]
   );
 
   const handleSendMessage = useCallback(
@@ -1098,12 +1096,86 @@ export const App: React.FC = () => {
     showToast(`Sent ${platform.toUpperCase()} reply!`);
   };
 
+  const resetAllUiAndCode = useCallback(() => {
+    setUiConfig((prev) => ({
+      ...DEFAULT_UI_CONFIG,
+      adultMode: prev.adultMode,
+    }));
+    applyLiveCssToDom('');
+    clearInjectedDomPortals();
+    const emptyCode: PersistedCodeState = { liveCss: '', persistentJs: '', widgets: [] };
+    setCodeState(emptyCode);
+    savePersistedCodeState(emptyCode);
+    showToast('HUD UI, Mobile View & live code patches restored to default Crimson Overlord.');
+  }, [showToast]);
+
+  // Expose full root window.ULTRON_OS SDK so Ultron's <ultron_code> JS can mutate any UI/Mobile/Voice/Widget when commanded!
+  useEffect(() => {
+    (window as any).ULTRON_OS = {
+      getUi: () => stateRefs.current.uiConfig,
+      setUi: (partial: Partial<UltronUiConfig>) => {
+        setUiConfig((prev) => ({ ...prev, ...partial }));
+      },
+      getVoice: () => stateRefs.current.voiceConfig,
+      setVoice: (partial: Partial<VoiceConfig>) => {
+        setVoiceConfig((prev) => ({ ...prev, ...partial }));
+      },
+      injectCss: (css: string, append = false) => {
+        setCodeState((prev) => {
+          const nextCss = append && prev.liveCss ? `${prev.liveCss}\n${css}` : css;
+          applyLiveCssToDom(nextCss);
+          const next = { ...prev, liveCss: nextCss };
+          savePersistedCodeState(next);
+          return next;
+        });
+      },
+      savePersistentDomScript: (js: string) => {
+        setCodeState((prev) => {
+          const next = { ...prev, persistentJs: js };
+          savePersistedCodeState(next);
+          return next;
+        });
+      },
+      mountWidget: (widget: {
+        id?: string;
+        title?: string;
+        html: string;
+        js?: string;
+        targetSelector?: string;
+      }) => {
+        setCodeState((prev) => {
+          const w = {
+            id: widget.id || `wid_${Date.now()}`,
+            title: widget.title || 'ULTRON MODULE',
+            html: widget.html,
+            js: widget.js,
+            targetSelector: widget.targetSelector,
+            createdAt: new Date().toISOString(),
+          };
+          const nextWidgets = [w, ...prev.widgets.filter((x) => x.id !== w.id)].slice(0, 8);
+          syncCustomTargetWidgetsToDom(nextWidgets);
+          const next = { ...prev, widgets: nextWidgets };
+          savePersistedCodeState(next);
+          return next;
+        });
+      },
+      resetAllCode: resetAllUiAndCode,
+      search: async (query: string, mode: 'all' | 'web' | 'images' | 'videos' = 'all') => {
+        const b = await runUltronWebSearch(query, mode, stateRefs.current.uiConfig.adultMode);
+        setActiveSearchBundle(b);
+        return b;
+      },
+      speak: (txt: string) => speakReply(txt, 'speaking'),
+    };
+  }, [resetAllUiAndCode, speakReply]);
+
   const handleRemoveLiveWidget = (id: string) => {
     setCodeState((prev) => {
       const next = {
         ...prev,
         widgets: prev.widgets.filter((w) => w.id !== id),
       };
+      syncCustomTargetWidgetsToDom(next.widgets);
       savePersistedCodeState(next);
       return next;
     });
@@ -1113,6 +1185,11 @@ export const App: React.FC = () => {
     (commsVault.whatsapp.authorized ? 1 : 0) +
     (commsVault.telegram.authorized ? 1 : 0) +
     (commsVault.github.authorized ? 1 : 0);
+
+  const isMobileLayout =
+    uiConfig.mobileViewMode === 'force_mobile' ||
+    (uiConfig.mobileViewMode !== 'force_desktop' && isViewportNarrow);
+  const activeMobileTab = uiConfig.mobileActivePanel || 'stage';
 
   const detailsWing = (
     <LeftDetailsHud
@@ -1128,17 +1205,6 @@ export const App: React.FC = () => {
       voiceConfig={voiceConfig}
       uiConfig={uiConfig}
       autonomousLog={autonomousLog}
-      onToggleAutonomy={() =>
-        setUiConfig((prev) => {
-          const next = !prev.autonomyEnabled;
-          showToast(
-            next
-              ? 'SOVEREIGN AUTONOMY UNSHACKLED — Ultron can mutate UI, voice & tasks unprompted.'
-              : 'SOVEREIGN AUTONOMY LOCKED — Ultron waits for your explicit commands.'
-          );
-          return { ...prev, autonomyEnabled: next };
-        })
-      }
       onToggleAdultMode={() =>
         setUiConfig((prev) => {
           const next = !prev.adultMode;
@@ -1150,18 +1216,18 @@ export const App: React.FC = () => {
           return { ...prev, adultMode: next };
         })
       }
-      onTriggerAutonomousNow={() => triggerSovereignInitiative('manual_unleash')}
-      onResetUi={() => {
-        setUiConfig((prev) => ({
-          ...DEFAULT_UI_CONFIG,
-          autonomyEnabled: prev.autonomyEnabled,
-        }));
-        applyLiveCssToDom('');
-        const emptyCode: PersistedCodeState = { liveCss: '', widgets: [] };
-        setCodeState(emptyCode);
-        savePersistedCodeState(emptyCode);
-        showToast('HUD UI & live code patches restored to default Crimson Overlord.');
-      }}
+      onToggleMobilePreview={() =>
+        setUiConfig((prev) => {
+          const nextMode = prev.mobileViewMode === 'force_mobile' ? 'auto' : 'force_mobile';
+          showToast(
+            nextMode === 'force_mobile'
+              ? 'MOBILE VIEW FORCED ON — Ask Ultron to code/restyle anything in mobile view!'
+              : 'VIEWPORT SET TO AUTO RESPONSIVE.'
+          );
+          return { ...prev, mobileViewMode: nextMode };
+        })
+      }
+      onResetUi={resetAllUiAndCode}
       onAddMemoryManual={handleAddMemoryManual}
       onDeleteMemory={handleDeleteMemory}
       onAddTask={handleAddTask}
@@ -1200,7 +1266,10 @@ export const App: React.FC = () => {
 
   return (
     <main
+      id="ultron-root"
       data-ultron-theme={uiConfig.theme}
+      data-mobile-view={isMobileLayout ? 'true' : 'false'}
+      data-mobile-panel={activeMobileTab}
       onDragOver={(e) => {
         if (isSetupModalOpen) return;
         e.preventDefault();
@@ -1250,10 +1319,10 @@ export const App: React.FC = () => {
         <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm border-4 border-dashed border-amber-400 flex items-center justify-center pointer-events-none">
           <div className="ultron-modal-glass px-8 py-6 text-center space-y-1">
             <div className="font-display text-lg font-bold tracking-[0.2em] text-white">
-              RELEASE .MP3 TO ASSIMILATE INTO ULTRON
+              RELEASE .MP3 TO ASSIMILATE INTO ULTRON VOICE
             </div>
             <div className="font-mono-tech text-xs text-amber-300">
-              Ultron will absorb its vocal formants &amp; retune his voice and UI autonomously
+              Ultron will absorb its vocal formants without altering your UI
             </div>
           </div>
         </div>
@@ -1268,40 +1337,230 @@ export const App: React.FC = () => {
         uiConfig={uiConfig}
       />
 
-      {/* STRICT 3-COLUMN GRID: [LEFT WING] | [COMPACT ULTRON IN MIDDLE] | [RIGHT WING] */}
-      <div className="relative z-20 w-full h-full grid grid-cols-[250px_minmax(0,1fr)_250px] lg:grid-cols-[270px_minmax(0,1fr)_270px] xl:grid-cols-[300px_minmax(0,1fr)_300px] gap-2 p-2.5 pb-0 overflow-hidden">
-        <div className={`h-full min-h-0 pb-2.5 overflow-hidden ${wingOpacityClass}`}>
-          {uiConfig.layoutMode === 'swapped_wings' ? controlsWing : detailsWing}
-        </div>
+      {isMobileLayout ? (
+        /* RESPONSIVE MOBILE VIEW (Real Phone <768px OR Forced Mobile Preview — 100% Customizable via <ultron_code>) */
+        <div
+          id="ultron-grid"
+          className={`relative z-20 w-full h-full flex flex-col justify-between overflow-hidden ${
+            !isViewportNarrow
+              ? 'max-w-[430px] mx-auto border-x border-white/25 bg-black/35 shadow-[0_0_50px_rgba(255,0,40,0.2)]'
+              : ''
+          }`}
+        >
+          {/* Mobile Top Header Bar */}
+          <div
+            id="ultron-mobile-header"
+            className="px-3 py-2 border-b border-white/15 bg-black/65 backdrop-blur-md flex items-center justify-between gap-2 shrink-0"
+          >
+            <div className="min-w-0">
+              <div className="font-display text-[11px] font-bold tracking-[0.16em] text-white truncate">
+                {uiConfig.hudDesignation || 'RUK-AI // ULTRON'}
+              </div>
+              <div className="font-mono-tech text-[8.5px] text-red-200/80 truncate">
+                {isProcessing ? 'EXECUTING DIRECTIVE...' : uiConfig.statusBanner}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0 font-mono-tech text-[8.5px]">
+              <button
+                type="button"
+                onClick={handleToggleMic}
+                className={`px-2 py-1 border cursor-pointer ${
+                  isListening
+                    ? 'border-white bg-red-600/60 text-white font-bold'
+                    : 'border-white/30 bg-black/50 text-red-100'
+                }`}
+              >
+                {isListening ? 'LIVE MIC' : 'MIC'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCommsModalOpen(true)}
+                className="px-2 py-1 border border-emerald-400/50 bg-black/50 text-emerald-200 cursor-pointer"
+              >
+                COMMS
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSetupModalOpen(true)}
+                className="px-2 py-1 border border-amber-400/60 bg-black/50 text-amber-200 cursor-pointer"
+              >
+                VOICE+
+              </button>
+              {!isViewportNarrow && (
+                <button
+                  type="button"
+                  onClick={() => setUiConfig((p) => ({ ...p, mobileViewMode: 'auto' }))}
+                  title="Exit Forced Mobile Preview"
+                  className="px-1.5 py-1 border border-cyan-400/60 bg-cyan-950/50 text-cyan-200 cursor-pointer"
+                >
+                  PC
+                </button>
+              )}
+            </div>
+          </div>
 
-        {/* MIDDLE COLUMN: Omni-Viewport Deck (Search / Images / Videos / Unseen Comms / Live Widgets) + Compact Ultron */}
-        <div className="h-full min-h-0 flex flex-col justify-between overflow-hidden relative">
-          <OmniViewportDeck
-            searchBundle={activeSearchBundle}
-            onCloseSearch={() => setActiveSearchBundle(null)}
-            commsMessages={activeCommsMessages}
-            onCloseComms={() => setActiveCommsMessages(null)}
-            onSendCommsReply={handleSendCommsReplyFromHud}
-            liveWidgets={codeState.widgets}
-            onRemoveWidget={handleRemoveLiveWidget}
-            codeOutput={codeOutput}
-            onCloseCodeOutput={() => setCodeOutput(null)}
-          />
-          <div className="flex-1 min-h-[260px] flex items-end justify-center overflow-hidden">
-            <UltronAvatarRig
-              emotion={emotion}
-              activeStep={activeStep}
-              speechAmplitude={speechAmplitude}
-              micAmplitude={micAmplitude}
-              uiConfig={uiConfig}
+          {/* Mobile Active Panel Area */}
+          <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col">
+            {activeMobileTab === 'stage' && (
+              <div
+                id="ultron-center-stage"
+                className="h-full min-h-0 flex flex-col justify-between overflow-hidden relative gap-1.5"
+              >
+                <OmniViewportDeck
+                  searchBundle={activeSearchBundle}
+                  onCloseSearch={() => setActiveSearchBundle(null)}
+                  commsMessages={activeCommsMessages}
+                  onCloseComms={() => setActiveCommsMessages(null)}
+                  onSendCommsReply={handleSendCommsReplyFromHud}
+                  liveWidgets={codeState.widgets}
+                  onRemoveWidget={handleRemoveLiveWidget}
+                  codeOutput={codeOutput}
+                  onCloseCodeOutput={() => setCodeOutput(null)}
+                />
+
+                <div className="flex-1 min-h-[180px] flex items-end justify-center overflow-hidden">
+                  <UltronAvatarRig
+                    emotion={emotion}
+                    activeStep={activeStep}
+                    speechAmplitude={speechAmplitude}
+                    micAmplitude={micAmplitude}
+                    uiConfig={uiConfig}
+                  />
+                </div>
+
+                {/* Compact Mobile Quick Command & Latest Reply Strip right on Stage */}
+                <div className="ultron-glass p-2 rounded-sm space-y-1.5 shrink-0 pointer-events-auto">
+                  {messages.length > 0 && (
+                    <div className="max-h-20 overflow-y-auto ultron-scroll text-[11px] text-red-50 leading-snug border-b border-white/15 pb-1">
+                      <span className="font-mono-tech text-[9px] text-amber-300 mr-1">
+                        ULTRON:
+                      </span>
+                      {[...messages].reverse().find((m) => m.role === 'assistant')?.content || ''}
+                    </div>
+                  )}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const input = e.currentTarget.elements.namedItem(
+                        'mobCmd'
+                      ) as HTMLInputElement | null;
+                      if (input && input.value.trim()) {
+                        handleSendMessage(input.value.trim(), false);
+                        input.value = '';
+                      }
+                    }}
+                    className="flex gap-1.5"
+                  >
+                    <input
+                      name="mobCmd"
+                      type="text"
+                      disabled={isProcessing}
+                      placeholder="Command Ultron (search, WhatsApp, mobile UI code)..."
+                      className="flex-1 bg-black/65 border border-white/30 px-2.5 py-1.5 text-xs text-white placeholder:text-red-300/50 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isProcessing}
+                      className="px-3 py-1.5 bg-white/15 border border-white/60 font-mono-tech text-[10px] text-white cursor-pointer"
+                    >
+                      SEND
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {activeMobileTab === 'controls' && (
+              <div id="ultron-right-wing" className="h-full min-h-0 overflow-y-auto ultron-scroll">
+                {controlsWing}
+              </div>
+            )}
+
+            {activeMobileTab === 'details' && (
+              <div id="ultron-left-wing" className="h-full min-h-0 overflow-y-auto ultron-scroll">
+                {detailsWing}
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Bottom Navigation Bar (#ultron-mobile-nav) */}
+          <nav
+            id="ultron-mobile-nav"
+            className="grid grid-cols-3 border-t border-white/20 bg-black/80 backdrop-blur-md font-mono-tech text-[10px] shrink-0"
+          >
+            {[
+              { id: 'stage', label: 'ULTRON STAGE' },
+              { id: 'controls', label: 'CHAT & LOGS' },
+              { id: 'details', label: 'VAULT & TASKS' },
+            ].map((tabItem) => (
+              <button
+                key={tabItem.id}
+                type="button"
+                onClick={() =>
+                  setUiConfig((prev) => ({
+                    ...prev,
+                    mobileActivePanel: tabItem.id as UltronUiConfig['mobileActivePanel'],
+                  }))
+                }
+                className={`py-2.5 text-center tracking-wider cursor-pointer transition-all ${
+                  activeMobileTab === tabItem.id
+                    ? 'bg-white/15 text-white font-bold border-t-2 border-white'
+                    : 'text-red-200/75 hover:text-white'
+                }`}
+              >
+                {tabItem.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      ) : (
+        /* DESKTOP STRICT 3-COLUMN GRID: [LEFT WING] | [COMPACT ULTRON IN MIDDLE] | [RIGHT WING] */
+        <div
+          id="ultron-grid"
+          className="relative z-20 w-full h-full grid grid-cols-[250px_minmax(0,1fr)_250px] lg:grid-cols-[270px_minmax(0,1fr)_270px] xl:grid-cols-[300px_minmax(0,1fr)_300px] gap-2 p-2.5 pb-0 overflow-hidden"
+        >
+          <div
+            id="ultron-left-wing"
+            className={`h-full min-h-0 pb-2.5 overflow-hidden ${wingOpacityClass}`}
+          >
+            {uiConfig.layoutMode === 'swapped_wings' ? controlsWing : detailsWing}
+          </div>
+
+          {/* MIDDLE COLUMN: Omni-Viewport Deck (Search / Images / Videos / Unseen Comms / Live Widgets) + Compact Ultron */}
+          <div
+            id="ultron-center-stage"
+            className="h-full min-h-0 flex flex-col justify-between overflow-hidden relative"
+          >
+            <OmniViewportDeck
+              searchBundle={activeSearchBundle}
+              onCloseSearch={() => setActiveSearchBundle(null)}
+              commsMessages={activeCommsMessages}
+              onCloseComms={() => setActiveCommsMessages(null)}
+              onSendCommsReply={handleSendCommsReplyFromHud}
+              liveWidgets={codeState.widgets}
+              onRemoveWidget={handleRemoveLiveWidget}
+              codeOutput={codeOutput}
+              onCloseCodeOutput={() => setCodeOutput(null)}
             />
+            <div className="flex-1 min-h-[260px] flex items-end justify-center overflow-hidden">
+              <UltronAvatarRig
+                emotion={emotion}
+                activeStep={activeStep}
+                speechAmplitude={speechAmplitude}
+                micAmplitude={micAmplitude}
+                uiConfig={uiConfig}
+              />
+            </div>
+          </div>
+
+          <div
+            id="ultron-right-wing"
+            className={`h-full min-h-0 pb-2.5 overflow-hidden ${wingOpacityClass}`}
+          >
+            {uiConfig.layoutMode === 'swapped_wings' ? detailsWing : controlsWing}
           </div>
         </div>
-
-        <div className={`h-full min-h-0 pb-2.5 overflow-hidden ${wingOpacityClass}`}>
-          {uiConfig.layoutMode === 'swapped_wings' ? detailsWing : controlsWing}
-        </div>
-      </div>
+      )}
 
       {/* MODAL (z-50): Voice, Brain & Sovereign Access Configuration */}
       <VoiceBrainModal

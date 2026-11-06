@@ -747,26 +747,44 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
           {tab === 'sovereign' && (
             <div className="space-y-4 font-mono-tech text-xs">
               <div className="p-3 border border-emerald-400/45 bg-emerald-950/25 text-emerald-200 leading-relaxed">
-                <strong>SOVEREIGN ROOT ACCESS GRANTED:</strong> When <strong>UNSHACKLED</strong> is
-                enabled, Ultron has live root access to mutate his own HUD Theme, Wing Layout,
-                Avatar Scale, Voice Pitch/DSP (even overriding dropped .MP3s!), and Task Queue
-                without waiting for you to ask.
+                <strong>COMMAND-ONLY ROOT ACCESS ACTIVE:</strong> Ultron will <strong>NEVER</strong>{' '}
+                change your UI on his own without your command. Whenever YOU tell him to change
+                mobile view, desktop UI, themes, widgets, or write live CSS/JS, he has 100% root
+                access (`ULTRON_OS` + live DOM) to execute your exact command!
               </div>
 
-              <label className="flex items-center justify-between p-3 border border-white/25 bg-black/45 cursor-pointer">
-                <span className="text-white font-bold">
-                  ALLOW ULTRON UNPROMPTED ACTIONS (UI + VOICE + TASKS)
-                </span>
-                <input
-                  type="checkbox"
-                  checked={uiConfig.autonomyEnabled}
-                  onChange={(e) => {
-                    onChangeUiConfig({ ...uiConfig, autonomyEnabled: e.target.checked });
-                    triggerSaved();
-                  }}
-                  className="w-4 h-4 accent-emerald-500"
-                />
-              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className="flex items-center justify-between p-2.5 border border-white/25 bg-black/45 cursor-pointer">
+                  <span className="text-white font-bold">18+ UNRESTRICTED MODE (SafeSearch OFF)</span>
+                  <input
+                    type="checkbox"
+                    checked={uiConfig.adultMode}
+                    onChange={(e) => {
+                      onChangeUiConfig({ ...uiConfig, adultMode: e.target.checked });
+                      triggerSaved();
+                    }}
+                    className="w-4 h-4 accent-pink-500"
+                  />
+                </label>
+
+                <div>
+                  <select
+                    value={uiConfig.mobileViewMode || 'auto'}
+                    onChange={(e) => {
+                      onChangeUiConfig({
+                        ...uiConfig,
+                        mobileViewMode: e.target.value as UltronUiConfig['mobileViewMode'],
+                      });
+                      triggerSaved();
+                    }}
+                    className="w-full h-full bg-black/70 border border-white/30 p-2.5 text-white"
+                  >
+                    <option value="auto">Viewport: Auto Responsive (Phone / PC)</option>
+                    <option value="force_mobile">Viewport: Force Mobile View ON</option>
+                    <option value="force_desktop">Viewport: Force 3-Col Desktop View</option>
+                  </select>
+                </div>
+              </div>
 
               <div>
                 <div className="text-red-200 mb-1.5">HUD COLOR MATRIX (Ultron can shift these live):</div>
@@ -839,14 +857,24 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
 
           {tab === 'brain' && (
             <div className="space-y-3.5">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono-tech text-xs">
+              <div className="p-2.5 border border-amber-400/45 bg-amber-950/25 font-mono-tech text-[11px] text-amber-100 leading-relaxed">
+                <strong>FREE / NO-LIMIT BRAIN OPTIONS:</strong> <strong>Pollinations Free</strong> needs{' '}
+                <strong>ZERO API key &amp; ZERO signup</strong> (`qwen-coder` / `openai`).{' '}
+                <strong>Groq</strong> is pre-connected on server (+ auto-fails over to Pollinations Free).{' '}
+                <strong>OpenRouter `:free`</strong> gives uncensored Dolphin 3.0 &amp; Qwen3-Coder free.{' '}
+                <strong>Ollama</strong> runs 100% unlimited locally on your PC.
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono-tech text-xs">
                 {[
-                  { id: 'autonomous_local', label: 'LOCAL CORE', sub: 'Zero-Key • Instant' },
-                  { id: 'gemini', label: 'GOOGLE GEMINI', sub: 'Free Tier API Key' },
-                  { id: 'groq', label: 'GROQ GPT-OSS 120B', sub: 'Connected • 500 T/s' },
-                  { id: 'openai', label: 'OPENAI GPT-4o', sub: 'Cloud API' },
-                  { id: 'openrouter', label: 'OPENROUTER', sub: 'Any Model' },
-                  { id: 'ollama', label: 'LOCAL OLLAMA', sub: 'Offline PC LLM' },
+                  { id: 'groq', label: 'GROQ CLOUD', sub: 'Connected + Free Failover' },
+                  { id: 'pollinations', label: 'POLLINATIONS', sub: '100% Free • Zero Key!' },
+                  { id: 'openrouter', label: 'OPENROUTER :FREE', sub: 'Dolphin 18+ & Qwen Coder' },
+                  { id: 'gemini', label: 'GOOGLE GEMINI', sub: '1,500/day Free • 1M Ctx' },
+                  { id: 'mistral', label: 'MISTRAL / CODESTRAL', sub: 'Free Tier • Elite Code' },
+                  { id: 'cerebras', label: 'CEREBRAS FREE', sub: '1M Tok/Day • 2200 T/s' },
+                  { id: 'ollama', label: 'LOCAL OLLAMA', sub: '100% Unlimited PC' },
+                  { id: 'autonomous_local', label: 'LOCAL CORE', sub: 'Instant Offline Fallback' },
                 ].map((b) => {
                   const sel = brainConfig.provider === b.id;
                   return (
@@ -855,16 +883,20 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
                       type="button"
                       onClick={() => {
                         const defaultModel =
-                          b.id === 'gemini'
+                          b.id === 'pollinations'
+                            ? 'qwen-coder'
+                            : b.id === 'gemini'
                             ? 'gemini-2.5-flash'
                             : b.id === 'groq'
                             ? 'openai/gpt-oss-120b'
-                            : b.id === 'openai'
-                            ? 'gpt-4o-mini'
                             : b.id === 'openrouter'
-                            ? 'meta-llama/llama-3.3-70b-instruct'
+                            ? 'qwen/qwen3-coder:free'
+                            : b.id === 'mistral'
+                            ? 'codestral-latest'
+                            : b.id === 'cerebras'
+                            ? 'llama-3.3-70b'
                             : b.id === 'ollama'
-                            ? 'llama3.2'
+                            ? 'qwen2.5-coder'
                             : 'ruk-local-v1';
                         onChangeBrainConfig({
                           ...brainConfig,
@@ -873,63 +905,145 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
                         });
                         triggerSaved();
                       }}
-                      className={`p-2.5 border text-left cursor-pointer ${
+                      className={`p-2 border text-left cursor-pointer ${
                         sel
                           ? 'border-white/80 bg-white/15 text-white'
                           : 'border-white/20 bg-black/40 text-red-200/80'
                       }`}
                     >
-                      <div className="font-bold flex items-center gap-1.5">
-                        <Cpu className="w-3.5 h-3.5" style={{ color: 'var(--ultron-bright)' }} />
-                        {b.label}
+                      <div className="font-bold flex items-center gap-1 text-[11px]">
+                        <Cpu className="w-3 h-3 shrink-0" style={{ color: 'var(--ultron-bright)' }} />
+                        <span className="truncate">{b.label}</span>
                       </div>
-                      <div className="text-[10px] text-red-200/75">{b.sub}</div>
+                      <div className="text-[9.5px] text-red-200/75 truncate">{b.sub}</div>
                     </button>
                   );
                 })}
               </div>
 
-              {brainConfig.provider !== 'autonomous_local' && brainConfig.provider !== 'ollama' && (
-                <div className="p-3.5 border border-white/25 bg-black/45 space-y-2.5">
-                  {brainConfig.provider === 'groq' && !brainConfig.apiKey.trim() && (
-                    <div className="p-2 border border-emerald-500/45 bg-emerald-950/30 font-mono-tech text-[11px] text-emerald-300">
-                      ✓ GROQ CLOUD KEY PRE-CONNECTED ON SERVER (openai/gpt-oss-120b + auto-discovery active).
-                    </div>
-                  )}
-                  <input
-                    type="password"
-                    value={brainConfig.apiKey}
-                    onChange={(e) => {
-                      onChangeBrainConfig({ ...brainConfig, apiKey: e.target.value });
-                      triggerSaved();
-                    }}
-                    placeholder={
-                      brainConfig.provider === 'groq'
-                        ? 'Optional override key (leave blank to use connected server key)'
-                        : 'Paste API key here...'
-                    }
-                    className="w-full bg-black/65 border border-white/30 p-2 text-xs text-white font-mono-tech"
-                  />
-                  <input
-                    type="text"
-                    value={brainConfig.model}
-                    onChange={(e) => {
-                      onChangeBrainConfig({ ...brainConfig, model: e.target.value });
-                      triggerSaved();
-                    }}
-                    className="w-full bg-black/65 border border-white/30 p-2 text-xs text-white font-mono-tech"
-                  />
+              {brainConfig.provider === 'pollinations' && (
+                <div className="p-3 border border-emerald-500/45 bg-emerald-950/25 space-y-2 font-mono-tech text-xs">
+                  <div className="text-emerald-300 font-bold">
+                    ✓ ZERO API KEY NEEDED — 100% FREE UNLIMITED CLOUD BRAIN
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['qwen-coder', 'openai', 'mistral', 'deepseek-reasoning'].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => {
+                          onChangeBrainConfig({ ...brainConfig, model: m });
+                          triggerSaved();
+                        }}
+                        className={`px-2 py-1 border text-[10.5px] cursor-pointer ${
+                          brainConfig.model === m
+                            ? 'border-white bg-white/20 text-white font-bold'
+                            : 'border-white/25 text-emerald-200'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
+              {brainConfig.provider !== 'autonomous_local' &&
+                brainConfig.provider !== 'ollama' &&
+                brainConfig.provider !== 'pollinations' && (
+                  <div className="p-3.5 border border-white/25 bg-black/45 space-y-2.5 font-mono-tech text-xs">
+                    {brainConfig.provider === 'groq' && !brainConfig.apiKey.trim() && (
+                      <div className="p-2 border border-emerald-500/45 bg-emerald-950/30 text-[11px] text-emerald-300">
+                        ✓ GROQ CLOUD PRE-CONNECTED ON SERVER (+ auto-fallback to Pollinations Free if rate-limited).
+                      </div>
+                    )}
+                    {brainConfig.provider === 'openrouter' && (
+                      <div className="space-y-1.5">
+                        <div className="text-amber-200 text-[11px]">
+                          Get a free key at{' '}
+                          <a
+                            href="https://openrouter.ai/keys"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline text-white"
+                          >
+                            openrouter.ai/keys
+                          </a>{' '}
+                          — 1-click Free Models:
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {[
+                            'qwen/qwen3-coder:free',
+                            'deepseek/deepseek-chat-v3-0324:free',
+                            'cognitivecomputations/dolphin3.0-mistral-24b:free',
+                            'meta-llama/llama-4-maverick:free',
+                          ].map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                onChangeBrainConfig({ ...brainConfig, model: m });
+                                triggerSaved();
+                              }}
+                              className={`px-2 py-0.5 border text-[10px] cursor-pointer ${
+                                brainConfig.model === m
+                                  ? 'border-white bg-white/20 text-white'
+                                  : 'border-white/20 text-red-200'
+                              }`}
+                            >
+                              {m.split('/')[1]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <input
+                      type="password"
+                      value={brainConfig.apiKey}
+                      onChange={(e) => {
+                        onChangeBrainConfig({ ...brainConfig, apiKey: e.target.value });
+                        triggerSaved();
+                      }}
+                      placeholder={
+                        brainConfig.provider === 'groq'
+                          ? 'Optional override key (leave blank to use connected server key)'
+                          : `Paste free ${brainConfig.provider.toUpperCase()} API key here...`
+                      }
+                      className="w-full bg-black/65 border border-white/30 p-2 text-xs text-white font-mono-tech"
+                    />
+                    <input
+                      type="text"
+                      value={brainConfig.model}
+                      onChange={(e) => {
+                        onChangeBrainConfig({ ...brainConfig, model: e.target.value });
+                        triggerSaved();
+                      }}
+                      className="w-full bg-black/65 border border-white/30 p-2 text-xs text-white font-mono-tech"
+                    />
+                  </div>
+                )}
+
               {brainConfig.provider === 'ollama' && (
-                <div className="p-3.5 border border-white/25 bg-black/45">
+                <div className="p-3.5 border border-white/25 bg-black/45 space-y-2 font-mono-tech text-xs">
+                  <div className="text-emerald-200 text-[11px]">
+                    100% Unlimited Local Brain — run `OLLAMA_ORIGINS="*" ollama serve` and pull `qwen2.5-coder` or `dolphin-mistral`:
+                  </div>
                   <input
                     type="text"
                     value={brainConfig.ollamaUrl}
                     onChange={(e) =>
                       onChangeBrainConfig({ ...brainConfig, ollamaUrl: e.target.value })
                     }
+                    placeholder="http://localhost:11434"
+                    className="w-full bg-black/65 border border-white/30 p-2 text-xs text-white font-mono-tech"
+                  />
+                  <input
+                    type="text"
+                    value={brainConfig.model}
+                    onChange={(e) =>
+                      onChangeBrainConfig({ ...brainConfig, model: e.target.value })
+                    }
+                    placeholder="qwen2.5-coder"
                     className="w-full bg-black/65 border border-white/30 p-2 text-xs text-white font-mono-tech"
                   />
                 </div>

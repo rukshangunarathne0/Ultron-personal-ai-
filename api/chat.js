@@ -34,6 +34,44 @@ function stripThinkBlocks(text = '') {
   return String(text).replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
 }
 
+/**
+ * Zero-Key Unlimited Free Cloud Brain via Pollinations OpenAI-compatible API
+ * Supports: 'openai', 'openai-large', 'qwen-coder', 'mistral', 'deepseek-reasoning'
+ */
+async function callPollinationsFree(systemPrompt, userPayload, requestedModel = 'openai') {
+  const tryModels = Array.from(
+    new Set([requestedModel || 'openai', 'qwen-coder', 'mistral', 'openai'])
+  );
+
+  for (const m of tryModels) {
+    try {
+      const res = await fetch('https://text.pollinations.ai/openai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: m,
+          temperature: 0.35,
+          private: true,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPayload },
+          ],
+        }),
+        signal: AbortSignal.timeout(18000),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const content = stripThinkBlocks(data?.choices?.[0]?.message?.content || '');
+      if (content && !CANNED_REFUSAL_REGEX.test(content)) {
+        return { content, modelUsed: `pollinations/${m}` };
+      }
+    } catch {
+      // try next model
+    }
+  }
+  return null;
+}
+
 async function discoverGroqChatModels(apiKey) {
   const now = Date.now();
   if (cachedModelList && now - cachedAt < 5 * 60 * 1000) {
@@ -79,16 +117,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Server GROQ_API_KEY is not configured' });
-  }
-
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-    const { systemPrompt, userPayload, model } = body;
+    const { systemPrompt, userPayload, model, provider } = body;
 
-    if (!systemPrompt || !userPayload || String(userPayload).length > 42000) {
+    if (!systemPrompt || !userPayload || String(userPayload).length > 48000) {
       return res.status(400).json({ error: 'Invalid request payload' });
     }
 
@@ -96,6 +129,21 @@ export default async function handler(req, res) {
       return res.status(403).json({
         error: 'Blocked by strict legal safety guard (illegal / underage / non-consensual content is prohibited).',
       });
+    }
+
+    // Direct Pollinations Zero-Key Unlimited Mode if selected
+    if (provider === 'pollinations') {
+      const pollRes = await callPollinationsFree(systemPrompt, userPayload, model);
+      if (pollRes) {
+        return res.status(200).json(pollRes);
+      }
+    }
+
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      const pollFallback = await callPollinationsFree(systemPrompt, userPayload, 'openai');
+      if (pollFallback) return res.status(200).json(pollFallback);
+      return res.status(500).json({ error: 'Server GROQ_API_KEY is not configured' });
     }
 
     const discovered = await discoverGroqChatModels(apiKey);
@@ -132,7 +180,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model: candidateModel,
-          temperature: 0.4,
+          temperature: 0.35,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPayload },
@@ -145,7 +193,6 @@ export default async function handler(req, res) {
         const rawContent = data?.choices?.[0]?.message?.content || '';
         const content = stripThinkBlocks(rawContent);
 
-        // If a particular model gave a canned refusal on a legal adult query, try the next model!
         if (CANNED_REFUSAL_REGEX.test(content)) {
           fallbackRefusalContent = content;
           fallbackRefusalModel = candidateModel;
@@ -158,6 +205,12 @@ export default async function handler(req, res) {
       lastErrStatus = upstream.status;
       lastErrMessage = await upstream.text();
       if (upstream.status === 401) break;
+    }
+
+    // Automatic Zero-Limit Backup: if Groq hit 429 rate-limit OR refused, fail over to Pollinations Free!
+    const pollBackup = await callPollinationsFree(systemPrompt, userPayload, 'qwen-coder');
+    if (pollBackup) {
+      return res.status(200).json(pollBackup);
     }
 
     if (fallbackRefusalContent) {

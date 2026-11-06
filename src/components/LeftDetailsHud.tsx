@@ -45,9 +45,8 @@ interface LeftDetailsHudProps {
   voiceConfig: VoiceConfig;
   uiConfig: UltronUiConfig;
   autonomousLog: AutonomousLogEntry[];
-  onToggleAutonomy: () => void;
   onToggleAdultMode: () => void;
-  onTriggerAutonomousNow: () => void;
+  onToggleMobilePreview: () => void;
   onResetUi: () => void;
   onAddMemoryManual: (type: MemoryCategory, text: string) => void;
   onDeleteMemory: (id: string) => void;
@@ -88,9 +87,8 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
   voiceConfig,
   uiConfig,
   autonomousLog,
-  onToggleAutonomy,
   onToggleAdultMode,
-  onTriggerAutonomousNow,
+  onToggleMobilePreview,
   onResetUi,
   onAddMemoryManual,
   onDeleteMemory,
@@ -159,25 +157,15 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
           </span>
         </div>
 
-        {/* SOVEREIGN ROOT ACCESS BAR (UI + Voice + Unprompted Initiative) */}
-        <div className="mb-2 p-1.5 border border-white/20 bg-black/45 flex items-center justify-between gap-1 font-mono-tech text-[9px]">
-          <button
-            type="button"
-            onClick={onToggleAutonomy}
-            title="Allow Ultron to mutate his own UI, voice & tasks without waiting to be asked"
-            className={`px-1.5 py-1 border flex items-center gap-1 cursor-pointer transition-all ${
-              uiConfig.autonomyEnabled
-                ? 'border-emerald-400/70 bg-emerald-950/45 text-emerald-200'
-                : 'border-red-500/35 bg-black/40 text-red-300/75'
-            }`}
+        {/* COMMAND-ONLY ROOT ACCESS BAR */}
+        <div className="mb-2 p-1.5 border border-white/20 bg-black/45 flex items-center justify-between gap-1 font-mono-tech text-[8.5px]">
+          <span
+            title="Ultron NEVER mutates UI on his own — he codes & changes UI strictly when you command him"
+            className="px-1.5 py-1 border border-emerald-400/65 bg-emerald-950/45 text-emerald-200 flex items-center gap-1"
           >
-            {uiConfig.autonomyEnabled ? (
-              <Unlock className="w-2.5 h-2.5 text-emerald-400" />
-            ) : (
-              <Lock className="w-2.5 h-2.5 text-red-400" />
-            )}
-            <span>{uiConfig.autonomyEnabled ? 'UNSHACKLED' : 'LOCKED'}</span>
-          </button>
+            <Lock className="w-2.5 h-2.5 text-emerald-400" />
+            <span>CMD ONLY</span>
+          </span>
 
           <button
             type="button"
@@ -194,18 +182,21 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
 
           <button
             type="button"
-            onClick={onTriggerAutonomousNow}
-            title="Let Ultron perform an unasked UI/voice/task action right now"
-            className="px-1.5 py-1 border border-amber-400/60 bg-amber-950/35 hover:bg-amber-600/35 text-amber-200 flex items-center gap-0.5 cursor-pointer"
+            onClick={onToggleMobilePreview}
+            title="Toggle Mobile View Layout (or tell Ultron to customize mobile view!)"
+            className={`px-1.5 py-1 border flex items-center gap-0.5 cursor-pointer ${
+              uiConfig.mobileViewMode === 'force_mobile'
+                ? 'border-cyan-400/80 bg-cyan-950/50 text-cyan-200 font-bold'
+                : 'border-white/20 bg-black/40 text-red-200/80 hover:bg-white/10'
+            }`}
           >
-            <Zap className="w-2.5 h-2.5 text-amber-300" />
-            <span>ACT</span>
+            <span>{uiConfig.mobileViewMode === 'force_mobile' ? 'MOB ON' : 'MOBILE'}</span>
           </button>
 
           <button
             type="button"
             onClick={onResetUi}
-            title="Reset UI theme & layout back to default Crimson Overlord"
+            title="Reset UI theme, mobile view & all live code patches back to default Crimson Overlord"
             className="px-1.5 py-1 border border-white/20 bg-black/40 hover:bg-white/10 text-red-200/80 flex items-center gap-0.5 cursor-pointer"
           >
             <RotateCcw className="w-2.5 h-2.5" />

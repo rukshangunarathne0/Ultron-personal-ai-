@@ -128,24 +128,26 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
     }
   };
 
+  const deckWidgets = liveWidgets.filter((w) => !w.targetSelector);
   const hasAnything =
     Boolean(searchBundle) ||
     Boolean(commsMessages) ||
-    liveWidgets.length > 0 ||
+    deckWidgets.length > 0 ||
     Boolean(codeOutput);
 
   if (!hasAnything) return null;
 
   return (
     <div
+      id="ultron-viewport-deck"
       className={`w-full flex flex-col gap-2 pointer-events-none z-30 ${
         expanded ? 'fixed inset-4 z-50 bg-black/85 backdrop-blur-md p-4 pointer-events-auto overflow-y-auto ultron-scroll' : ''
       }`}
     >
       {/* 1. SELF-CODED LIVE ULTRON HUD WIDGETS */}
-      {liveWidgets.length > 0 && (
+      {deckWidgets.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pointer-events-auto">
-          {liveWidgets.map((w) => (
+          {deckWidgets.map((w) => (
             <MountedWidgetCard
               key={w.id}
               widget={w}

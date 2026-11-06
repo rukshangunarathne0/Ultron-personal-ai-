@@ -120,7 +120,10 @@ export const UltronAvatarRig: React.FC<UltronAvatarRigProps> = ({
     (emotion === 'hostile' ? 1.03 : emotion === 'listening' ? 1.015 : 1.0) * presenceMult;
 
   return (
-    <div className="relative w-full h-full flex items-end justify-center overflow-hidden pointer-events-none select-none">
+    <div
+      id="ultron-avatar-rig"
+      className="relative w-full h-full flex items-end justify-center overflow-hidden pointer-events-none select-none"
+    >
       {/* Ambient Back-Glow Behind Compact Ultron */}
       <div
         className="absolute bottom-[6%] w-[280px] h-[280px] xl:w-[340px] xl:h-[340px] rounded-full blur-3xl transition-all duration-500"

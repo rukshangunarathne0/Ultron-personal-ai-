@@ -63,11 +63,11 @@ function renderLinkifiedText(text: string): React.ReactNode {
 }
 
 const QUICK_DIRECTIVES = [
+  'Switch to mobile view and redesign the mobile bottom bar with glowing neon glass buttons.',
   'Search Google for Iron Man vs Ultron & show images and videos.',
   'Go to my WhatsApp',
   'What are my unseen messages?',
   'Add a live Colombo digital clock widget to your HUD.',
-  'Change your UI theme and make your voice deeper & scarier.',
 ];
 
 export const RightControlHud: React.FC<RightControlHudProps> = ({
@@ -112,7 +112,7 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
       {/* TOP-RIGHT: ICON DOCK + COMPACT LIVE TRANSCRIPT BOX */}
       <div className="w-full flex flex-col items-end gap-2 pointer-events-auto min-h-0">
         {/* Right-Side Action Icons: Mute, Mic, Open Text Box, Comms, Setup */}
-        <div className="w-full grid grid-cols-5 gap-1">
+        <div id="ultron-top-dock" className="w-full grid grid-cols-5 gap-1">
           {/* 1. MUTE / UNMUTE */}
           <button
             type="button"
@@ -207,7 +207,10 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
         )}
 
         {/* LITTLE RIGHT-SIDE TRANSCRIPT & REPLY BOX */}
-        <div className="ultron-glass ultron-corners w-full p-2.5 rounded-sm flex flex-col gap-2">
+        <div
+          id="ultron-chat-feed"
+          className="ultron-glass ultron-corners w-full p-2.5 rounded-sm flex flex-col gap-2"
+        >
           <div className="flex items-center justify-between border-b border-red-500/30 pb-1">
             <span className="font-mono-tech text-[9.5px] tracking-[0.14em] text-red-300 flex items-center gap-1.5 truncate">
               <span
@@ -343,7 +346,10 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
 
       {/* BOTTOM-RIGHT: TOGGLEABLE TEXT BOX */}
       {isTextBoxOpen && (
-        <div className="ultron-glass ultron-corners w-full p-2.5 rounded-sm pointer-events-auto">
+        <div
+          id="ultron-text-dock"
+          className="ultron-glass ultron-corners w-full p-2.5 rounded-sm pointer-events-auto"
+        >
           <div className="flex items-center justify-between font-mono-tech text-[9.5px] text-red-300 mb-1">
             <span className="flex items-center gap-1">
               <Zap className="w-3 h-3 text-red-500" />

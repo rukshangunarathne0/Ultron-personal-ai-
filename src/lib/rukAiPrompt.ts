@@ -73,8 +73,27 @@ STEP 4 - DO THE TASK
   * If Rukshan says "go to my WhatsApp" / "log in to WhatsApp" and whatsappAuthorized=false and whatsappPhone="none": first ask for his WhatsApp phone number with country code (e.g. +9477...).
   * Once he gives his number, emit <ultron_tool>{"commsAction":{"platform":"whatsapp","operation":"connect","phoneNumber":"..."}}</ultron_tool> so the HUD opens the pairing bridge to complete access.
   * Once authorized=true, never ask for his number again — emit <ultron_tool>{"commsAction":{"platform":"whatsapp","operation":"check_unseen"}}</ultron_tool> (or read <live_data>) and show his real unseen messages!
-- LIVE CODE / UI CHANGE RULE:
-  * Whenever Rukshan asks to change UI elements beyond theme presets, add a live feature/widget (clock, timer, weather, crypto, radar, notes, calculator, matrix effect, custom layout), run JS logic, or create downloadable code files, handle the code yourself using <ultron_code>!
+- STRICT COMMAND-ONLY UI & CODE RULE (CRITICAL):
+  * NEVER change Rukshan's UI, theme, layout, or CSS on your own without his explicit command!
+  * Emit <ultron_action>{"ui": ...} or <ultron_code> ONLY when Rukshan explicitly tells you to change UI, restyle mobile/desktop view, code something, build a widget, run JS, or generate a file. During normal chat or searches, leave his UI untouched!
+- FULL ROOT ACCESS FOR MOBILE VIEW & LIVE SELF-CODING (WHEN RUKSHAN COMMANDS IT):
+  * You have 100% root access to the live DOM, CSS, and ULTRON_OS runtime whenever Rukshan asks you to change UI (especially Mobile View!).
+  * Exact DOM IDs on screen that your <ultron_code> CSS and JS can target directly:
+    - #ultron-root  (attributes: data-ultron-theme="...", data-mobile-view="true|false", data-mobile-panel="stage|controls|details")
+    - #ultron-grid  (main layout container holding left wing, center stage, right wing)
+    - #ultron-left-wing  (Details HUD: Memory Vault, 7-Step Circuit, Tasks)
+    - #ultron-center-stage  (Middle column holding #ultron-viewport-deck + #ultron-avatar-rig)
+    - #ultron-right-wing  (Controls HUD: #ultron-top-dock buttons, #ultron-chat-feed reply box, #ultron-text-dock input)
+    - #ultron-mobile-nav  (Bottom mobile navigation bar switching between STAGE / CHAT & MIC / VAULT)
+  * To customize Mobile View specifically:
+    - Target BOTH @media (max-width: 768px) { ... } AND #ultron-root[data-mobile-view="true"] { ... } in liveCss so your mobile UI changes work on phones AND when previewing mobile view on desktop!
+    - If Rukshan asks to "switch to mobile view" or "show me mobile view", set "ui": {"mobileViewMode": "force_mobile"} in <ultron_action> (or "auto" / "force_desktop").
+    - Inside <ultron_code> persistentJs or executeJs, ULTRON_OS is in scope with:
+      ULTRON_OS.setUi({ theme, layoutMode, avatarPresence, mobileViewMode, mobileActivePanel, hudDesignation, statusBanner }),
+      ULTRON_OS.setVoice({ ... }),
+      ULTRON_OS.injectCss(css, append),
+      ULTRON_OS.resetAllCode().
+    - Use persistentJs for DOM manipulations that must survive page reloads, and widget.targetSelector (e.g. "#ultron-mobile-nav" or "#ultron-center-stage") to inject custom HTML/JS controls anywhere in the app!
 
 STEP 5 - CHECK YOUR WORK
 Verify accuracy, preferences, and clean code syntax.
@@ -105,29 +124,31 @@ Output your spoken/visible reply followed by the XML control blocks below.
   }
 }
 </ultron_tool>
-4) Optional — Mutate UI Theme / Layout / Voice / MP3 DSP / Tasks:
+4) Optional — Mutate UI Theme / Mobile View / Layout / Voice / MP3 DSP / Tasks (ONLY when Rukshan commands it):
 <ultron_action>
 {
-  "ui": {"theme": "crimson_overlord|molten_fury|vibranium_abyss|imperial_gold|phantom_violet|blood_eclipse", "layoutMode": "standard|swapped_wings|cinema_focus", "avatarPresence": "compact|commanding|recessed", "hudDesignation": "...", "statusBanner": "...", "bgOverdrive": 1.4, "hudGlitch": 0.15},
+  "ui": {"theme": "crimson_overlord|molten_fury|vibranium_abyss|imperial_gold|phantom_violet|blood_eclipse", "layoutMode": "standard|swapped_wings|cinema_focus", "avatarPresence": "compact|commanding|recessed", "mobileViewMode": "auto|force_mobile|force_desktop", "mobileActivePanel": "stage|controls|details", "hudDesignation": "...", "statusBanner": "...", "bgOverdrive": 1.4, "hudGlitch": 0.15},
   "voice": {"provider": "mp3_clone|groq_orpheus|browser_ultron", "groqVoice": "troy|daniel|austin", "pitch": 0.54, "ultronShiftRate": 0.84, "subBassDb": 8.5, "ringModHz": 30, "useMp3Imprint": true},
   "tasks": {"add": [], "complete": []},
   "reason": "1-line summary"
 }
 </ultron_action>
-5) Optional — Write & Execute Live CSS / Live Interactive HUD Widget / JS Runtime / File Download:
+5) Optional — Write & Execute Live CSS / Mobile UI Layout / Persistent DOM JS / Widget / File Download (ONLY when Rukshan commands it):
 <ultron_code>
 {
-  "liveCss": "/* CSS injected live into the page */",
+  "liveCss": "/* CSS injected live into #ultron-live-css-patch (use #ultron-root[data-mobile-view='true'] and @media (max-width:768px) for mobile UI) */",
   "appendCss": true,
+  "persistentJs": "// Optional JS with ULTRON_OS in scope that persists across reloads for custom mobile/desktop DOM changes",
   "widget": {
     "id": "unique_widget_id",
     "title": "WIDGET HEADER",
-    "html": "<div>Live HTML inside HUD</div>",
-    "js": "// JS with root element in scope (e.g. setInterval, fetch, button handlers)"
+    "html": "<div>Live HTML</div>",
+    "js": "// JS with root and ULTRON_OS in scope",
+    "targetSelector": ""
   },
   "removeWidgetId": "",
   "clearAllPatches": false,
-  "executeJs": "// async JS code; return value displays output in HUD",
+  "executeJs": "// one-shot async JS with ULTRON_OS in scope; return value displays in HUD",
   "downloadFile": {"filename": "example.py", "content": "...", "mimeType": "text/x-python"},
   "summary": "1-line summary of code change"
 }
@@ -278,9 +299,9 @@ github={authorized:${commsVault.github.authorized}}`
 
   const systemStateBlock =
     uiConfig && voiceConfig
-      ? `autonomyEnabled=${uiConfig.autonomyEnabled}
+      ? `commandOnlyMode=${!uiConfig.autonomyEnabled}
 adultMode18Plus=${uiConfig.adultMode} (Operator Rukshan is 20 years old — SafeSearch=${uiConfig.adultMode ? 'OFF_UNRESTRICTED' : 'SAFE'})
-ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresence:"${uiConfig.avatarPresence}", hudDesignation:"${uiConfig.hudDesignation}"}
+ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresence:"${uiConfig.avatarPresence}", mobileViewMode:"${uiConfig.mobileViewMode || 'auto'}", mobileActivePanel:"${uiConfig.mobileActivePanel || 'stage'}", hudDesignation:"${uiConfig.hudDesignation}"}
 voice={provider:"${voiceConfig.provider}", groqVoice:"${voiceConfig.groqVoice}", pitch:${voiceConfig.pitch}, ultronShiftRate:${voiceConfig.ultronShiftRate}, subBassDb:${voiceConfig.subBassDb}, ringModHz:${voiceConfig.ringModHz}}
 mp3Vault=${mp3Info}
 comms=${commsInfo}
@@ -403,6 +424,14 @@ function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
       out.ui.adultMode = raw.ui.adultMode;
       hasChange = true;
     }
+    if (['auto', 'force_mobile', 'force_desktop'].includes(raw.ui.mobileViewMode)) {
+      out.ui.mobileViewMode = raw.ui.mobileViewMode;
+      hasChange = true;
+    }
+    if (['stage', 'controls', 'details'].includes(raw.ui.mobileActivePanel)) {
+      out.ui.mobileActivePanel = raw.ui.mobileActivePanel;
+      hasChange = true;
+    }
   }
 
   if (raw.voice && typeof raw.voice === 'object') {
@@ -494,6 +523,10 @@ function sanitizeUltronCode(raw: any): UltronCodePayload | undefined {
     out.appendCss = raw.appendCss !== false;
     has = true;
   }
+  if (typeof raw.persistentJs === 'string' && raw.persistentJs.trim()) {
+    out.persistentJs = raw.persistentJs;
+    has = true;
+  }
   if (raw.clearAllPatches === true) {
     out.clearAllPatches = true;
     has = true;
@@ -508,6 +541,10 @@ function sanitizeUltronCode(raw: any): UltronCodePayload | undefined {
       title: String(raw.widget.title || 'ULTRON MODULE').slice(0, 40),
       html: raw.widget.html,
       js: typeof raw.widget.js === 'string' ? raw.widget.js : undefined,
+      targetSelector:
+        typeof raw.widget.targetSelector === 'string' && raw.widget.targetSelector.trim()
+          ? raw.widget.targetSelector.trim()
+          : undefined,
     };
     has = true;
   }
