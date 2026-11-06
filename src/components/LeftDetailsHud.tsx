@@ -46,6 +46,7 @@ interface LeftDetailsHudProps {
   uiConfig: UltronUiConfig;
   autonomousLog: AutonomousLogEntry[];
   onToggleAutonomy: () => void;
+  onToggleAdultMode: () => void;
   onTriggerAutonomousNow: () => void;
   onResetUi: () => void;
   onAddMemoryManual: (type: MemoryCategory, text: string) => void;
@@ -88,6 +89,7 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
   uiConfig,
   autonomousLog,
   onToggleAutonomy,
+  onToggleAdultMode,
   onTriggerAutonomousNow,
   onResetUi,
   onAddMemoryManual,
@@ -179,12 +181,25 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
 
           <button
             type="button"
+            onClick={onToggleAdultMode}
+            title="Toggle 18+ Unrestricted Adult Search, Info, Images & Video Links (SafeSearch OFF)"
+            className={`px-1.5 py-1 border flex items-center gap-0.5 cursor-pointer transition-all ${
+              uiConfig.adultMode
+                ? 'border-pink-400/80 bg-pink-950/50 text-pink-200 font-bold'
+                : 'border-white/20 bg-black/40 text-red-200/75'
+            }`}
+          >
+            <span>{uiConfig.adultMode ? '18+ ON' : 'SAFE'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={onTriggerAutonomousNow}
             title="Let Ultron perform an unasked UI/voice/task action right now"
-            className="px-1.5 py-1 border border-amber-400/60 bg-amber-950/35 hover:bg-amber-600/35 text-amber-200 flex items-center gap-1 cursor-pointer"
+            className="px-1.5 py-1 border border-amber-400/60 bg-amber-950/35 hover:bg-amber-600/35 text-amber-200 flex items-center gap-0.5 cursor-pointer"
           >
             <Zap className="w-2.5 h-2.5 text-amber-300" />
-            <span>ACT NOW</span>
+            <span>ACT</span>
           </button>
 
           <button
@@ -194,7 +209,7 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
             className="px-1.5 py-1 border border-white/20 bg-black/40 hover:bg-white/10 text-red-200/80 flex items-center gap-0.5 cursor-pointer"
           >
             <RotateCcw className="w-2.5 h-2.5" />
-            <span>DEFAULT</span>
+            <span>RESET</span>
           </button>
         </div>
 

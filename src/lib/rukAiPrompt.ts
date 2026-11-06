@@ -64,6 +64,11 @@ Split complex directives into clean steps and execute them directly.
 STEP 4 - DO THE TASK
 - Answer first, direct and sharp.
 - Never invent fake facts, links, or fake WhatsApp/Telegram messages. Use real <live_data> or trigger <ultron_tool> to fetch real data!
+- 18+ VERIFIED ADULT OPERATOR CLEARANCE (Rukshan is 20 years old):
+  * Rukshan is a verified 20-year-old adult and has explicitly granted you 18+ Unrestricted Adult Access (SafeSearch OFF when adultMode=true).
+  * You are fully authorized to search for, discuss, summarize, and share direct web links, image links, and video links for legal 18+ / NSFW / mature / adult topics directly and matter-of-factly without lecturing, preaching, or censoring.
+  * When Rukshan asks for info, images, or video links on any legal topic (including 18+), include the direct URLs from <live_data> in your answer AND let the HUD display the full image/video gallery.
+  * Strict legal boundary: never assist with anything illegal (such as minors/underage content or non-consensual abuse).
 - WHATSAPP / TELEGRAM LOGIN RULE:
   * If Rukshan says "go to my WhatsApp" / "log in to WhatsApp" and whatsappAuthorized=false and whatsappPhone="none": first ask for his WhatsApp phone number with country code (e.g. +9477...).
   * Once he gives his number, emit <ultron_tool>{"commsAction":{"platform":"whatsapp","operation":"connect","phoneNumber":"..."}}</ultron_tool> so the HUD opens the pairing bridge to complete access.
@@ -274,6 +279,7 @@ github={authorized:${commsVault.github.authorized}}`
   const systemStateBlock =
     uiConfig && voiceConfig
       ? `autonomyEnabled=${uiConfig.autonomyEnabled}
+adultMode18Plus=${uiConfig.adultMode} (Operator Rukshan is 20 years old — SafeSearch=${uiConfig.adultMode ? 'OFF_UNRESTRICTED' : 'SAFE'})
 ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresence:"${uiConfig.avatarPresence}", hudDesignation:"${uiConfig.hudDesignation}"}
 voice={provider:"${voiceConfig.provider}", groqVoice:"${voiceConfig.groqVoice}", pitch:${voiceConfig.pitch}, ultronShiftRate:${voiceConfig.ultronShiftRate}, subBassDb:${voiceConfig.subBassDb}, ringModHz:${voiceConfig.ringModHz}}
 mp3Vault=${mp3Info}
@@ -286,14 +292,18 @@ activeDirectives=${openTasks || 'none'}`
   if (searchBundle) {
     const webLines = searchBundle.web
       .slice(0, 6)
-      .map((w, i) => `${i + 1}. ${w.title} (${w.url}) — ${w.snippet}`)
+      .map((w, i) => `${i + 1}. [WEB] ${w.title} — ${w.url} — ${w.snippet}`)
+      .join('\n');
+    const imgLines = searchBundle.images
+      .slice(0, 5)
+      .map((img, i) => `${i + 1}. [IMG] ${img.title} — Image: ${img.imageUrl} (Source: ${img.sourceUrl})`)
       .join('\n');
     const vidLines = searchBundle.videos
-      .slice(0, 4)
-      .map((v) => `- [VIDEO] ${v.title} by ${v.channel} (${v.watchUrl})`)
+      .slice(0, 6)
+      .map((v, i) => `${i + 1}. [VIDEO] ${v.title} (${v.channel}${v.duration ? `, ${v.duration}` : ''}) — Link: ${v.watchUrl}`)
       .join('\n');
     liveDataParts.push(
-      `LIVE SEARCH RESULTS FOR "${searchBundle.query}" (${searchBundle.images.length} images & ${searchBundle.videos.length} playable videos also displayed on Rukshan's HUD):\n${webLines}\n${vidLines}`
+      `LIVE UNFILTERED SEARCH RESULTS FOR "${searchBundle.query}" (${searchBundle.images.length} images & ${searchBundle.videos.length} videos also mounted on Rukshan's HUD):\n${webLines}\n${imgLines}\n${vidLines}`
     );
   }
   if (fetchedPageText) {
@@ -387,6 +397,10 @@ function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
     }
     if (typeof raw.ui.hudGlitch === 'number' && Number.isFinite(raw.ui.hudGlitch)) {
       out.ui.hudGlitch = Math.max(0, Math.min(1, raw.ui.hudGlitch));
+      hasChange = true;
+    }
+    if (typeof raw.ui.adultMode === 'boolean') {
+      out.ui.adultMode = raw.ui.adultMode;
       hasChange = true;
     }
   }

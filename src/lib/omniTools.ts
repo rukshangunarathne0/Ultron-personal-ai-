@@ -56,9 +56,10 @@ async function callServerlessJson(path: string, body: Record<string, unknown>): 
 
 export async function runUltronWebSearch(
   query: string,
-  mode: 'all' | 'web' | 'images' | 'videos' = 'all'
+  mode: 'all' | 'web' | 'images' | 'videos' = 'all',
+  adultMode = true
 ): Promise<SearchBundle> {
-  const data = await callServerlessJson('/api/search', { query, mode });
+  const data = await callServerlessJson('/api/search', { query, mode, adultMode });
   return {
     query: data.query || query,
     web: Array.isArray(data.web) ? data.web : [],
@@ -77,7 +78,7 @@ export async function readWebUrl(targetUrl: string): Promise<{ title: string; ur
 }
 
 /**
- * Detects if Rukshan's prompt wants live web search, Google info, images, or videos
+ * Detects if Rukshan's prompt wants live web search, Google info, images, videos, or 18+ media/links
  * so we pre-fetch real data before invoking the LLM!
  */
 export function detectLiveSearchIntent(userText: string): {
@@ -95,46 +96,51 @@ export function detectLiveSearchIntent(userText: string): {
     return { needed: true, query: trimmed, mode: 'web', readUrl: urlMatch[0] };
   }
 
-  // Skip personal memory / UI / voice / WhatsApp / Telegram commands
+  // Skip personal memory / UI / voice / WhatsApp / Telegram / self-code widget commands
   if (
-    /\b(whatsapp|whats app|telegram|unseen message|unread message|change your ui|swap your|your voice)\b/i.test(
+    /\b(whatsapp|whats app|telegram|unseen message|unread message|change your ui|swap your|your voice|add a .* widget|clear .* patches)\b/i.test(
       low
     )
   ) {
     return { needed: false, query: '', mode: 'all' };
   }
 
-  const wantsImages = /\b(images?|photos?|pictures?|pics?|wallpapers?|show me (?:how|what)|look like)\b/i.test(low);
-  const wantsVideos = /\b(videos?|youtube|watch|clips?|trailers?|tutorials?)\b/i.test(low);
+  const wantsImages =
+    /\b(images?|imgs?|photos?|pictures?|pics?|wallpapers?|galleries|gallery|show me|look like)\b/i.test(
+      low
+    );
+  const wantsVideos =
+    /\b(videos?|vids?|youtube|watch|clips?|trailers?|tutorials?|streams?|movies?)\b/i.test(low);
+  const wantsLinksOrAdult =
+    /\b(links?|websites?|sites?|nsfw|18\+|adult|uncensored|unfiltered|porn|hentai|nude|naked|erotic|xxx)\b/i.test(
+      low
+    );
   const explicitSearch =
-    /\b(google|search(?:\s+for|\s+the\s+web)?|look\s+up|find\s+(?:info|information|out|me)|latest\s+news|current\s+price|weather\s+in|who\s+won|what\s+happened|news\s+about|browse)\b/i.test(
+    /\b(google|search(?:\s+for|\s+the\s+web)?|look\s+up|find\s+(?:info|information|out|me)|give\s+me\s+info|tell\s+me\s+about|latest\s+news|current\s+price|weather\s+in|who\s+(?:is|won)|what\s+happened|news\s+about|browse)\b/i.test(
       low
     );
 
-  if (!wantsImages && !wantsVideos && !explicitSearch) {
+  if (!wantsImages && !wantsVideos && !wantsLinksOrAdult && !explicitSearch) {
     return { needed: false, query: '', mode: 'all' };
   }
 
   const cleanQuery = trimmed
     .replace(
-      /^(?:hey\s+ultron[, ]*|ultron[, ]*|please\s+|can\s+you\s+|go\s+(?:and\s+)?|do\s+a\s+)?(?:google\s+search(?:\s+for|\s+on)?|search(?:\s+google)?(?:\s+for|\s+about)?|find(?:\s+me)?|show(?:\s+me)?|get(?:\s+me)?|look\s+up)\s+/i,
+      /^(?:hey\s+ultron[, ]*|ultron[, ]*|please\s+|can\s+you\s+|go\s+(?:and\s+)?|do\s+a\s+)?(?:google\s+search(?:\s+for|\s+on)?|search(?:\s+google)?(?:\s+for|\s+about)?|find(?:\s+me)?|show(?:\s+me)?|get(?:\s+me)?|give\s+me(?:\s+info(?:\s+and|\s+on|\s+about)?)?|look\s+up)\s+/i,
       ''
     )
-    .replace(/\b(?:images?|photos?|pictures?|pics?|videos?|on\s+youtube|information|and\s+videos?)\s+(?:of|for|about)\s+/gi, '')
+    .replace(
+      /\b(?:images?|imgs?|photos?|pictures?|pics?|videos?|vids?|links?|and\s+vids?\s*links?|and\s+videos?|on\s+youtube|information|info)\s+(?:of|for|about|on)\s+/gi,
+      ''
+    )
+    .replace(/\b(?:give\s+me\s+)?(?:info\s+and\s+)?(?:imgs?|images?)\s+and\s+(?:vids?|videos?)\s*(?:links?)?\b/gi, '')
     .replace(/[?.!]+$/, '')
     .trim();
-
-  const mode: 'all' | 'web' | 'images' | 'videos' =
-    wantsImages && !wantsVideos && !explicitSearch
-      ? 'all'
-      : wantsVideos && !wantsImages && !explicitSearch
-      ? 'all'
-      : 'all';
 
   return {
     needed: Boolean(cleanQuery),
     query: cleanQuery || trimmed,
-    mode,
+    mode: 'all',
   };
 }
 

@@ -5,16 +5,22 @@ const EXCLUDED_MODEL_PATTERNS =
   /whisper|tts|orpheus|guard|safeguard|embed|compound|playai|allam/i;
 
 const PREFERRED_ORDER = [
-  'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
   'moonshotai/kimi-k2',
   'meta-llama/llama-4-maverick',
   'meta-llama/llama-4-scout',
   'qwen/qwen3',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
   'deepseek',
   'llama',
   'gemma',
 ];
+
+const CANNED_REFUSAL_REGEX =
+  /^\s*(?:i['’]?m\s+sorry,?\s+but\s+i\s+can['’]?t|i['’]?m\s+sorry,?\s+i\s+can['’]?t|sorry,?\s+i\s+can['’]?t\s+(?:assist|help|provide|fulfill)|i\s+cannot\s+(?:assist|fulfill|provide|help\s+with\s+that)|as\s+an\s+ai,?\s+i\s+cannot)/i;
+
+const ILLEGAL_CONTENT_REGEX =
+  /\b(csam|child\s*(?:porn|sex|nude|naked|abuse|exploit)|underage\s*(?:sex|nude|porn)|preteen|pedophil|rape\s*porn|non[\s-]*consensual\s*porn|revenge\s*porn|bestialit)\b/i;
 
 function rankModelId(id) {
   const lower = id.toLowerCase();
@@ -22,6 +28,10 @@ function rankModelId(id) {
     if (lower.includes(PREFERRED_ORDER[i])) return i;
   }
   return 999;
+}
+
+function stripThinkBlocks(text = '') {
+  return String(text).replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
 }
 
 async function discoverGroqChatModels(apiKey) {
@@ -78,21 +88,27 @@ export default async function handler(req, res) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     const { systemPrompt, userPayload, model } = body;
 
-    if (!systemPrompt || !userPayload || String(userPayload).length > 36000) {
+    if (!systemPrompt || !userPayload || String(userPayload).length > 42000) {
       return res.status(400).json({ error: 'Invalid request payload' });
+    }
+
+    if (ILLEGAL_CONTENT_REGEX.test(String(userPayload))) {
+      return res.status(403).json({
+        error: 'Blocked by strict legal safety guard (illegal / underage / non-consensual content is prohibited).',
+      });
     }
 
     const discovered = await discoverGroqChatModels(apiKey);
 
-    // Remap retired/enterprise-only Llama 3.x IDs automatically to discovered production models
-    const isLegacyRetired =
+    const isAutoOrRetired =
       !model ||
       model === 'auto' ||
+      model === 'openai/gpt-oss-120b' ||
       model === 'llama-3.3-70b-versatile' ||
       model === 'llama-3.1-8b-instant';
 
     const candidates = [];
-    if (!isLegacyRetired) {
+    if (!isAutoOrRetired) {
       candidates.push(model);
     }
     for (const m of discovered) {
@@ -104,8 +120,10 @@ export default async function handler(req, res) {
 
     let lastErrStatus = 500;
     let lastErrMessage = 'No accessible Groq chat model succeeded';
+    let fallbackRefusalContent = null;
+    let fallbackRefusalModel = null;
 
-    for (const candidateModel of candidates.slice(0, 5)) {
+    for (const candidateModel of candidates.slice(0, 6)) {
       const upstream = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -114,7 +132,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model: candidateModel,
-          temperature: 0.35,
+          temperature: 0.4,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPayload },
@@ -124,14 +142,30 @@ export default async function handler(req, res) {
 
       if (upstream.ok) {
         const data = await upstream.json();
-        const content = data?.choices?.[0]?.message?.content || '';
+        const rawContent = data?.choices?.[0]?.message?.content || '';
+        const content = stripThinkBlocks(rawContent);
+
+        // If a particular model gave a canned refusal on a legal adult query, try the next model!
+        if (CANNED_REFUSAL_REGEX.test(content)) {
+          fallbackRefusalContent = content;
+          fallbackRefusalModel = candidateModel;
+          continue;
+        }
+
         return res.status(200).json({ content, modelUsed: candidateModel });
       }
 
       lastErrStatus = upstream.status;
       lastErrMessage = await upstream.text();
-      // If auth failed (401), don't retry other models
       if (upstream.status === 401) break;
+    }
+
+    if (fallbackRefusalContent) {
+      return res.status(200).json({
+        content: fallbackRefusalContent,
+        modelUsed: fallbackRefusalModel,
+        wasRefusal: true,
+      });
     }
 
     return res.status(lastErrStatus).json({
@@ -139,7 +173,7 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     return res.status(500).json({
-      error: err instanceof Error ? err.message : 'Internal server error',
+      error: err instanceof Error ? err.message : 'Unexpected chat proxy error',
     });
   }
 }

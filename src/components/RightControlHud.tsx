@@ -36,6 +36,32 @@ interface RightControlHudProps {
   onReplayLastSpeech: (text: string) => void;
 }
 
+function renderLinkifiedText(text: string): React.ReactNode {
+  // Convert markdown [label](https://...) to plain URL tokens or clickable anchors
+  const normalized = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2');
+  const parts = normalized.split(/(https?:\/\/[^\s<>")]+)/g);
+  return parts.map((part, idx) => {
+    if (/^https?:\/\//i.test(part)) {
+      const cleanHref = part.replace(/[.,;!?]+$/, '');
+      const trailing = part.slice(cleanHref.length);
+      return (
+        <React.Fragment key={idx}>
+          <a
+            href={cleanHref}
+            target="_blank"
+            rel="noreferrer"
+            className="text-amber-300 underline hover:text-white break-all"
+          >
+            {cleanHref}
+          </a>
+          {trailing}
+        </React.Fragment>
+      );
+    }
+    return <React.Fragment key={idx}>{part}</React.Fragment>;
+  });
+}
+
 const QUICK_DIRECTIVES = [
   'Search Google for Iron Man vs Ultron & show images and videos.',
   'Go to my WhatsApp',
@@ -265,8 +291,8 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
               </div>
             ) : latestAssistant ? (
               <>
-                <p className="text-[11px] text-red-50 whitespace-pre-wrap leading-relaxed">
-                  {latestAssistant.content}
+                <p className="text-[11px] text-red-50 whitespace-pre-wrap leading-relaxed break-words">
+                  {renderLinkifiedText(latestAssistant.content)}
                 </p>
                 {latestAssistant.memoryUpdate &&
                   (latestAssistant.memoryUpdate.save.length > 0 ||
@@ -305,7 +331,9 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
                   <span className="font-mono-tech text-[8.5px] text-red-400 mr-1 uppercase">
                     {m.role === 'user' ? 'YOU:' : 'AI:'}
                   </span>
-                  <span className="whitespace-pre-wrap">{m.content}</span>
+                  <span className="whitespace-pre-wrap break-words">
+                    {renderLinkifiedText(m.content)}
+                  </span>
                 </div>
               ))}
             </div>

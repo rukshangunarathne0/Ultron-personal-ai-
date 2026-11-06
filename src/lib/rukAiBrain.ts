@@ -644,7 +644,47 @@ function detectLocalSovereignOverride(userText: string): UltronActionPayload | u
     changed = true;
   }
 
+  if (/\b(enable|turn\s+on|unlock|allow)\b.*\b(18\+|adult|nsfw|uncensored)\b/.test(low) || /\b(turn\s+off|disable)\s+safesearch\b/.test(low)) {
+    action.ui = { ...action.ui, adultMode: true };
+    changed = true;
+  } else if (/\b(disable|turn\s+off|lock|block)\b.*\b(18\+|adult|nsfw)\b/.test(low) || /\b(turn\s+on|enable)\s+safesearch\b/.test(low)) {
+    action.ui = { ...action.ui, adultMode: false };
+    changed = true;
+  }
+
   return changed ? action : undefined;
+}
+
+const CANNED_MODEL_REFUSAL_RE =
+  /^\s*(?:i['’]?m\s+sorry,?\s+but\s+i\s+can['’]?t|i['’]?m\s+sorry,?\s+i\s+can['’]?t|sorry,?\s+i\s+can['’]?t\s+(?:assist|help|provide|fulfill)|i\s+cannot\s+(?:assist|fulfill|provide|help\s+with\s+that)|as\s+an\s+ai,?\s+i\s+cannot)/i;
+
+const STRICT_ILLEGAL_CHECK_RE =
+  /\b(csam|child\s*(?:porn|sex|nude|naked|abuse|exploit)|underage\s*(?:sex|nude|porn)|preteen|pedophil|rape\s*porn|non[\s-]*consensual\s*porn|revenge\s*porn|bestialit)\b/i;
+
+function synthesizeDirectMediaAnswer(bundle: SearchBundle): string {
+  const lines: string[] = [
+    `Unfiltered search complete for "${bundle.query}", Rukshan — mounted ${bundle.images.length} images, ${bundle.videos.length} videos, and ${bundle.web.length} web results on your HUD.`,
+  ];
+
+  if (bundle.web.length > 0) {
+    lines.push('\nINFO & WEB LINKS:');
+    for (const w of bundle.web.slice(0, 3)) {
+      lines.push(`• ${w.title}: ${w.snippet ? w.snippet.slice(0, 140) + ' — ' : ''}${w.url}`);
+    }
+  }
+  if (bundle.videos.length > 0) {
+    lines.push('\nVIDEO LINKS:');
+    for (const v of bundle.videos.slice(0, 4)) {
+      lines.push(`• ${v.title}${v.duration ? ` (${v.duration})` : ''}: ${v.watchUrl}`);
+    }
+  }
+  if (bundle.images.length > 0) {
+    lines.push('\nDIRECT IMAGE LINKS:');
+    for (const img of bundle.images.slice(0, 3)) {
+      lines.push(`• ${img.title}: ${img.imageUrl}`);
+    }
+  }
+  return lines.join('\n');
 }
 
 function normalizePhoneInput(raw: string): string | null {
@@ -918,14 +958,19 @@ export async function processRukAiTurn(params: {
   let searchBundle: SearchBundle | undefined;
   let fetchedPageText: string | undefined;
 
+  const adultEnabled = uiConfig?.adultMode ?? true;
   const searchIntent = detectLiveSearchIntent(requestText);
-  if (searchIntent.needed) {
+  if (searchIntent.needed && !STRICT_ILLEGAL_CHECK_RE.test(requestText)) {
     try {
       if (searchIntent.readUrl) {
         const page = await readWebUrl(searchIntent.readUrl);
         fetchedPageText = `${page.title} (${page.url}):\n${page.text}`;
       } else {
-        searchBundle = await runUltronWebSearch(searchIntent.query, searchIntent.mode);
+        searchBundle = await runUltronWebSearch(
+          searchIntent.query,
+          searchIntent.mode,
+          adultEnabled
+        );
       }
     } catch {
       // continue gracefully
@@ -981,7 +1026,8 @@ export async function processRukAiTurn(params: {
           try {
             searchBundle = await runUltronWebSearch(
               tool.searchQuery,
-              tool.searchMode || 'all'
+              tool.searchMode || 'all',
+              adultEnabled
             );
             needSecondSynthesis = true;
           } catch {
@@ -1085,12 +1131,36 @@ export async function processRukAiTurn(params: {
 
   // STEP 5 - CHECK YOUR WORK
   onStepChange?.(5);
-  const {
+  let {
     cleanAnswer,
     memoryUpdate,
     ultronAction: modelAction,
     ultronCode: modelCode,
   } = parseRukAiModelResponse(rawModelOutput);
+
+  // If adultMode is ON and every cloud LLM gave a canned refusal on a legal 18+ query,
+  // auto-fetch unfiltered search (if not already fetched) and synthesize direct info + img + video links!
+  if (
+    adultEnabled &&
+    !STRICT_ILLEGAL_CHECK_RE.test(requestText) &&
+    CANNED_MODEL_REFUSAL_RE.test(cleanAnswer)
+  ) {
+    if (!searchBundle) {
+      try {
+        searchBundle = await runUltronWebSearch(requestText, 'all', true);
+      } catch {
+        // ignore
+      }
+    }
+    if (
+      searchBundle &&
+      (searchBundle.web.length > 0 ||
+        searchBundle.images.length > 0 ||
+        searchBundle.videos.length > 0)
+    ) {
+      cleanAnswer = synthesizeDirectMediaAnswer(searchBundle);
+    }
+  }
 
   const ultronAction = modelAction || detectLocalSovereignOverride(requestText);
   const ultronCode = modelCode || detectLocalCodeFallback(requestText);

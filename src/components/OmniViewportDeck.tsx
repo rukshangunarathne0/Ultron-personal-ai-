@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Code2,
+  Copy,
+  Eye,
+  EyeOff,
   ExternalLink,
   Film,
   Globe,
@@ -14,9 +17,11 @@ import {
   X,
 } from 'lucide-react';
 import {
+  ImageSearchItem,
   SearchBundle,
   UltronLiveWidget,
   UnseenCommsMessage,
+  VideoSearchItem,
 } from '../types';
 
 interface OmniViewportDeckProps {
@@ -87,16 +92,24 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
   onCloseCodeOutput,
 }) => {
   const [mediaTab, setMediaTab] = useState<'images' | 'videos' | 'web'>('images');
-  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<VideoSearchItem | null>(null);
+  const [selectedImage, setSelectedImage] = useState<ImageSearchItem | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [privacyBlur, setPrivacyBlur] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
 
+  const copyLink = (url: string, key: string) => {
+    navigator.clipboard?.writeText(url).catch(() => {});
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey((c) => (c === key ? null : c)), 1800);
+  };
+
   useEffect(() => {
     if (!searchBundle) return;
-    setPlayingVideoId(null);
+    setPlayingVideo(null);
     setSelectedImage(null);
     if (searchBundle.images.length > 0) setMediaTab('images');
     else if (searchBundle.videos.length > 0) setMediaTab('videos');
@@ -301,6 +314,19 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
+                onClick={() => setPrivacyBlur((v) => !v)}
+                title={privacyBlur ? 'Unblur media previews' : 'Quick-blur media previews'}
+                className={`px-1.5 py-0.5 border font-mono-tech text-[9px] flex items-center gap-1 cursor-pointer ${
+                  privacyBlur
+                    ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+                    : 'border-white/25 text-red-200 hover:text-white'
+                }`}
+              >
+                {privacyBlur ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                {privacyBlur ? 'UNBLUR' : 'BLUR'}
+              </button>
+              <button
+                type="button"
                 onClick={() => setExpanded((v) => !v)}
                 title={expanded ? 'Restore compact view' : 'Expand full screen'}
                 className="p-1 border border-white/25 text-red-200 hover:text-white cursor-pointer"
@@ -321,41 +347,93 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
             </div>
           </div>
 
-          {/* Lightbox Image Preview */}
+          {/* Lightbox Image Preview + Direct Links */}
           {selectedImage && mediaTab === 'images' && (
-            <div className="mb-2 relative bg-black/80 border border-white/30 p-1.5 flex items-center justify-center">
+            <div className="mb-2 relative bg-black/85 border border-white/35 p-2 flex flex-col items-center gap-1.5">
               <img
-                src={selectedImage}
-                alt="Selected result"
-                className="max-h-52 object-contain"
+                src={selectedImage.imageUrl || selectedImage.thumbnailUrl}
+                alt={selectedImage.title}
+                referrerPolicy="no-referrer"
+                className="max-h-56 object-contain"
               />
+              <div className="w-full flex items-center justify-between gap-2 font-mono-tech text-[9.5px] border-t border-white/15 pt-1">
+                <span className="text-white/90 truncate">{selectedImage.title}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => copyLink(selectedImage.imageUrl, 'lightbox')}
+                    className="text-emerald-300 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <Copy className="w-2.5 h-2.5" />
+                    {copiedKey === 'lightbox' ? 'COPIED' : 'COPY IMG'}
+                  </button>
+                  <a
+                    href={selectedImage.imageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-amber-300 hover:underline flex items-center gap-0.5"
+                  >
+                    FULL IMG <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                  <a
+                    href={selectedImage.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-cyan-300 hover:underline flex items-center gap-0.5"
+                  >
+                    SOURCE <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedImage(null)}
-                className="absolute top-1.5 right-1.5 p-1 bg-black/80 border border-white/40 text-white cursor-pointer"
+                className="absolute top-1.5 right-1.5 p-1 bg-black/85 border border-white/40 text-white cursor-pointer"
               >
                 <X className="w-3 h-3" />
               </button>
             </div>
           )}
 
-          {/* Inline Playable YouTube Embed */}
-          {playingVideoId && mediaTab === 'videos' && (
-            <div className="mb-2 relative aspect-video w-full max-h-56 bg-black border border-white/35">
-              <iframe
-                src={`https://www.youtube.com/embed/${playingVideoId}?autoplay=1`}
-                title="Ultron Video Feed"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full border-0"
-              />
-              <button
-                type="button"
-                onClick={() => setPlayingVideoId(null)}
-                className="absolute top-1.5 right-1.5 px-2 py-0.5 bg-black/85 border border-white/50 font-mono-tech text-[10px] text-white cursor-pointer"
-              >
-                CLOSE PLAYER
-              </button>
+          {/* Inline Playable Video (MP4 or Embed Iframe) */}
+          {playingVideo && mediaTab === 'videos' && (
+            <div className="mb-2 relative aspect-video w-full max-h-60 bg-black border border-white/35">
+              {playingVideo.directFileUrl ? (
+                <video
+                  src={playingVideo.directFileUrl}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-contain bg-black"
+                />
+              ) : playingVideo.embedUrl ? (
+                <iframe
+                  src={`${playingVideo.embedUrl}${
+                    playingVideo.embedUrl.includes('?') ? '&' : '?'
+                  }autoplay=1`}
+                  title={playingVideo.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full border-0"
+                />
+              ) : null}
+              <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                <a
+                  href={playingVideo.watchUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 bg-black/85 border border-amber-400/60 font-mono-tech text-[9.5px] text-amber-200 flex items-center gap-1"
+                >
+                  OPEN LINK <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPlayingVideo(null)}
+                  className="px-2 py-0.5 bg-black/85 border border-white/50 font-mono-tech text-[9.5px] text-white cursor-pointer"
+                >
+                  CLOSE
+                </button>
+              </div>
             </div>
           )}
 
@@ -363,91 +441,142 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
             {mediaTab === 'images' && (
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
                 {searchBundle.images.map((img, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setSelectedImage(img.imageUrl || img.thumbnailUrl)}
-                    className="group relative aspect-video bg-black/60 border border-white/20 hover:border-white overflow-hidden cursor-pointer"
-                  >
-                    <img
-                      src={img.thumbnailUrl || img.imageUrl}
-                      alt={img.title}
-                      loading="lazy"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                    <div className="absolute inset-x-0 bottom-0 bg-black/75 px-1 py-0.5 text-[9px] font-mono-tech text-white truncate">
-                      {img.title}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {mediaTab === 'videos' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {searchBundle.videos.map((vid) => (
                   <div
-                    key={vid.videoId}
-                    className="border border-white/20 bg-black/55 p-1.5 flex gap-2 items-center"
+                    key={i}
+                    className="group relative aspect-video bg-black/60 border border-white/20 hover:border-white overflow-hidden"
                   >
                     <button
                       type="button"
-                      onClick={() => setPlayingVideoId(vid.videoId)}
-                      className="relative w-24 aspect-video shrink-0 bg-black overflow-hidden border border-white/25 cursor-pointer group"
+                      onClick={() => setSelectedImage(img)}
+                      className="w-full h-full cursor-pointer block"
                     >
                       <img
-                        src={vid.thumbnailUrl}
-                        alt={vid.title}
-                        className="w-full h-full object-cover"
+                        src={img.thumbnailUrl || img.imageUrl}
+                        alt={img.title}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        className={`w-full h-full object-cover group-hover:scale-105 transition-all ${
+                          privacyBlur ? 'blur-lg' : ''
+                        }`}
                       />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-red-600/45">
-                        <Play className="w-5 h-5 text-white fill-white" />
-                      </div>
-                      {vid.duration && (
-                        <span className="absolute bottom-0.5 right-0.5 bg-black/85 px-1 text-[8.5px] font-mono-tech text-white">
-                          {vid.duration}
-                        </span>
-                      )}
                     </button>
-                    <div className="min-w-0 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => setPlayingVideoId(vid.videoId)}
-                        className="text-left text-[11px] font-semibold text-white hover:underline line-clamp-2 cursor-pointer"
+                    <div className="absolute inset-x-0 bottom-0 bg-black/80 px-1 py-0.5 flex items-center justify-between gap-1 text-[8.5px] font-mono-tech text-white">
+                      <span className="truncate">{img.title}</span>
+                      <a
+                        href={img.imageUrl || img.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open direct image link"
+                        className="text-amber-300 hover:text-white shrink-0"
                       >
-                        {vid.title}
-                      </button>
-                      <div className="flex items-center justify-between mt-0.5 font-mono-tech text-[9px] text-red-200/75">
-                        <span className="truncate">{vid.channel}</span>
-                        <a
-                          href={vid.watchUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-amber-300 hover:underline flex items-center gap-0.5 shrink-0"
-                        >
-                          YT <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      </div>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
+            {mediaTab === 'videos' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {searchBundle.videos.map((vid) => {
+                  const canInlinePlay = Boolean(vid.directFileUrl || vid.embedUrl);
+                  const onActivateVideo = () => {
+                    if (canInlinePlay) {
+                      setPlayingVideo(vid);
+                    } else {
+                      window.open(vid.watchUrl, '_blank', 'noopener,noreferrer');
+                    }
+                  };
+                  return (
+                    <div
+                      key={vid.videoId}
+                      className="border border-white/20 bg-black/55 p-1.5 flex gap-2 items-center"
+                    >
+                      <button
+                        type="button"
+                        onClick={onActivateVideo}
+                        className="relative w-24 aspect-video shrink-0 bg-black overflow-hidden border border-white/25 cursor-pointer group"
+                      >
+                        {vid.thumbnailUrl ? (
+                          <img
+                            src={vid.thumbnailUrl}
+                            alt={vid.title}
+                            referrerPolicy="no-referrer"
+                            className={`w-full h-full object-cover ${
+                              privacyBlur ? 'blur-md' : ''
+                            }`}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center font-mono-tech text-[9px] text-red-300">
+                            VIDEO
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-red-600/45">
+                          {canInlinePlay ? (
+                            <Play className="w-5 h-5 text-white fill-white" />
+                          ) : (
+                            <ExternalLink className="w-4 h-4 text-amber-300" />
+                          )}
+                        </div>
+                        {vid.duration && (
+                          <span className="absolute bottom-0.5 right-0.5 bg-black/85 px-1 text-[8.5px] font-mono-tech text-white">
+                            {vid.duration}
+                          </span>
+                        )}
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={onActivateVideo}
+                          className="text-left text-[11px] font-semibold text-white hover:underline line-clamp-2 cursor-pointer"
+                        >
+                          {vid.title}
+                        </button>
+                        <div className="flex items-center justify-between gap-1 mt-1 font-mono-tech text-[8.5px] text-red-200/80">
+                          <span className="truncate">{vid.channel}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => copyLink(vid.watchUrl, vid.videoId)}
+                              className="text-emerald-300 hover:underline cursor-pointer"
+                            >
+                              {copiedKey === vid.videoId ? 'COPIED' : 'COPY'}
+                            </button>
+                            <a
+                              href={vid.watchUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-amber-300 hover:underline flex items-center gap-0.5"
+                            >
+                              OPEN <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {mediaTab === 'web' && (
               <div className="space-y-1.5">
                 {searchBundle.web.map((w, idx) => (
-                  <a
+                  <div
                     key={idx}
-                    href={w.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block p-2 border border-white/20 bg-black/50 hover:border-white/60 transition-colors"
+                    className="p-2 border border-white/20 bg-black/50 hover:border-white/60 transition-colors"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-amber-200 truncate">
+                      <a
+                        href={w.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-bold text-amber-200 hover:underline truncate flex items-center gap-1"
+                      >
                         {w.title}
-                      </span>
+                        <ExternalLink className="w-3 h-3 shrink-0" />
+                      </a>
                       <span className="font-mono-tech text-[8.5px] px-1 border border-white/25 text-red-200 shrink-0">
                         {w.source}
                       </span>
@@ -455,7 +584,10 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                     <p className="text-[11px] text-white/90 leading-snug mt-0.5 line-clamp-2">
                       {w.snippet}
                     </p>
-                  </a>
+                    <div className="font-mono-tech text-[9px] text-emerald-300/80 truncate mt-0.5">
+                      {w.url}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

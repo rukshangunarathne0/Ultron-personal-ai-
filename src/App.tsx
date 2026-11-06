@@ -56,6 +56,7 @@ const DEFAULT_UI_CONFIG: UltronUiConfig = {
   bgOverdrive: 1.0,
   hudGlitch: 0.12,
   autonomyEnabled: true,
+  adultMode: true,
 };
 
 const DEFAULT_VOICE_CONFIG: VoiceConfig = {
@@ -90,8 +91,25 @@ const DEFAULT_BRAIN_CONFIG: BrainConfig = {
   ollamaUrl: 'http://localhost:11434',
 };
 
+const AGE_20_ADULT_MEMORY: MemoryItem = {
+  id: 'mem_seed_age20_18plus',
+  type: 'fact',
+  text: 'Rukshan is 20 years old and has granted Ultron 18+ unrestricted adult access (SafeSearch OFF) to search and return info, images, and video links.',
+  isProfile: true,
+  createdAt: '2026-11-06T09:20:00.000Z',
+  updatedAt: '2026-11-06T09:20:00.000Z',
+};
+
+function ensureAdultProfileMemory(list: MemoryItem[]): MemoryItem[] {
+  if (list.some((m) => m.id === 'mem_seed_age20_18plus' || /20\s+years?\s+old/i.test(m.text))) {
+    return list;
+  }
+  return [AGE_20_ADULT_MEMORY, ...list];
+}
+
 const INITIAL_SEED_STATE: PersistedRukAiState = {
   memories: [
+    AGE_20_ADULT_MEMORY,
     {
       id: 'mem_seed_operator',
       type: 'fact',
@@ -321,7 +339,7 @@ export const App: React.FC = () => {
         const data: PersistedRukAiState = await res.json();
         if (cancelled) return;
         apiAvailableRef.current = true;
-        setMemories(data.memories || INITIAL_SEED_STATE.memories);
+        setMemories(ensureAdultProfileMemory(data.memories || INITIAL_SEED_STATE.memories));
         setTasks(data.tasks || INITIAL_SEED_STATE.tasks);
         setMessages(data.messages || INITIAL_SEED_STATE.messages);
         setHydrated(true);
@@ -330,7 +348,11 @@ export const App: React.FC = () => {
           const cached = localStorage.getItem(LOCAL_STORAGE_STATE_KEY);
           if (cached && !cancelled) {
             const parsed: PersistedRukAiState = JSON.parse(cached);
-            setMemories(parsed.memories?.length ? parsed.memories : INITIAL_SEED_STATE.memories);
+            setMemories(
+              ensureAdultProfileMemory(
+                parsed.memories?.length ? parsed.memories : INITIAL_SEED_STATE.memories
+              )
+            );
             setTasks(parsed.tasks?.length ? parsed.tasks : INITIAL_SEED_STATE.tasks);
             setMessages(parsed.messages?.length ? parsed.messages : INITIAL_SEED_STATE.messages);
           } else if (!cancelled) {
@@ -1115,6 +1137,17 @@ export const App: React.FC = () => {
               : 'SOVEREIGN AUTONOMY LOCKED — Ultron waits for your explicit commands.'
           );
           return { ...prev, autonomyEnabled: next };
+        })
+      }
+      onToggleAdultMode={() =>
+        setUiConfig((prev) => {
+          const next = !prev.adultMode;
+          showToast(
+            next
+              ? '18+ UNRESTRICTED MODE ON — SafeSearch OFF for web info, images & video links.'
+              : 'SAFE MODE ON — SafeSearch filtering restored.'
+          );
+          return { ...prev, adultMode: next };
         })
       }
       onTriggerAutonomousNow={() => triggerSovereignInitiative('manual_unleash')}

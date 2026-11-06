@@ -46,6 +46,7 @@ export interface UltronUiConfig {
   bgOverdrive: number;
   hudGlitch: number;
   autonomyEnabled: boolean;
+  adultMode: boolean;
 }
 
 export interface Mp3AcousticImprint {
@@ -80,7 +81,8 @@ export interface VideoSearchItem {
   duration: string;
   thumbnailUrl: string;
   watchUrl: string;
-  embedUrl: string;
+  embedUrl?: string;
+  directFileUrl?: string;
 }
 
 export interface SearchBundle {
