@@ -96,11 +96,12 @@ export function detectLiveSearchIntent(userText: string): {
     return { needed: true, query: trimmed, mode: 'web', readUrl: urlMatch[0] };
   }
 
-  // Skip personal memory / UI / voice / WhatsApp / Telegram / self-code widget commands
+  // Skip personal memory / UI / panel-switch / voice / WhatsApp / Telegram / self-code widget commands
   if (
-    /\b(whatsapp|whats app|telegram|unseen message|unread message|change your ui|swap your|your voice|add a .* widget|clear .* patches)\b/i.test(
+    /\b(whatsapp|whats app|telegram|unseen message|unread message|command\s+details?|bring\s+back|get\s+(?:it|them)\s+back|right\s+side|right\s+panel|change your ui|swap your|your voice|add a .* widget|clear .* patches)\b/i.test(
       low
-    )
+    ) &&
+    !/\b(search(?:\s+from|\s+on|\s+in)?\s+google|google\s+search|search\s+for)\b/i.test(low)
   ) {
     return { needed: false, query: '', mode: 'all' };
   }
@@ -116,7 +117,7 @@ export function detectLiveSearchIntent(userText: string): {
       low
     );
   const explicitSearch =
-    /\b(google|search(?:\s+for|\s+the\s+web)?|look\s+up|find\s+(?:info|information|out|me)|give\s+me\s+info|tell\s+me\s+about|latest\s+news|current\s+price|weather\s+in|who\s+(?:is|won)|what\s+happened|news\s+about|browse)\b/i.test(
+    /\b(google|search(?:\s+from\s+google|\s+on\s+google|\s+for|\s+the\s+web)?|look\s+up|find\s+(?:info|information|out|me)|give\s+me\s+(?:the\s+)?(?:details|info)|tell\s+me\s+about|latest\s+news|current\s+price|weather\s+in|who\s+(?:is|won)|what\s+happened|news\s+about|browse)\b/i.test(
       low
     );
 
@@ -126,9 +127,11 @@ export function detectLiveSearchIntent(userText: string): {
 
   const cleanQuery = trimmed
     .replace(
-      /^(?:hey\s+ultron[, ]*|ultron[, ]*|please\s+|can\s+you\s+|go\s+(?:and\s+)?|do\s+a\s+)?(?:google\s+search(?:\s+for|\s+on)?|search(?:\s+google)?(?:\s+for|\s+about)?|find(?:\s+me)?|show(?:\s+me)?|get(?:\s+me)?|give\s+me(?:\s+info(?:\s+and|\s+on|\s+about)?)?|look\s+up)\s+/i,
+      /^(?:hey\s+ultron[, ]*|ultron[, ]*|please\s+|can\s+you\s+|go\s+(?:and\s+)?|do\s+a\s+)?(?:google\s+search(?:\s+for|\s+on|\s+about)?|search(?:\s+(?:from|on|in))?(?:\s+google)?(?:\s+for|\s+about|\s+on)?|from\s+google\s+(?:search\s+)?(?:for\s+|about\s+)?|google\s+|find(?:\s+me)?|show(?:\s+me)?|get(?:\s+me)?|give\s+me(?:\s+(?:the\s+)?(?:details|info)(?:\s+and|\s+on|\s+about|\s+from\s+google)?)?|look\s+up)\s+/i,
       ''
     )
+    .replace(/\b(?:from|on|in)\s+google\b/gi, '')
+    .replace(/\b(?:on|in|from)\s+(?:the\s+)?right\s+(?:side|panel)\b/gi, '')
     .replace(
       /\b(?:images?|imgs?|photos?|pictures?|pics?|videos?|vids?|links?|and\s+vids?\s*links?|and\s+videos?|on\s+youtube|information|info)\s+(?:of|for|about|on)\s+/gi,
       ''

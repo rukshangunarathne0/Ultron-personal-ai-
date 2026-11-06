@@ -57,6 +57,7 @@ const DEFAULT_UI_CONFIG: UltronUiConfig = {
   avatarPresence: 'compact',
   mobileViewMode: 'auto',
   mobileActivePanel: 'stage',
+  rightPanelMode: 'command_details',
   hudDesignation: 'RUK-AI // ULTRON',
   statusBanner: 'OP: RUKSHAN // COMMAND CORE',
   bgOverdrive: 1.0,
@@ -474,6 +475,7 @@ export const App: React.FC = () => {
           action.ui.theme ? `theme=${action.ui.theme}` : '',
           action.ui.layoutMode ? `layout=${action.ui.layoutMode}` : '',
           action.ui.avatarPresence ? `scale=${action.ui.avatarPresence}` : '',
+          action.ui.rightPanelMode ? `rightPanel=${action.ui.rightPanelMode}` : '',
           action.ui.hudDesignation ? `title="${action.ui.hudDesignation}"` : '',
         ]
           .filter(Boolean)
@@ -736,9 +738,14 @@ export const App: React.FC = () => {
         }
         if (result.searchBundle) {
           setActiveSearchBundle(result.searchBundle);
+          setUiConfig((prev) => ({
+            ...prev,
+            rightPanelMode: 'search_details',
+            mobileActivePanel: 'controls',
+          }));
           pushAutoLog(
             'search',
-            `Web Search "${result.searchBundle.query}" (${result.searchBundle.web.length} web, ${result.searchBundle.images.length} imgs, ${result.searchBundle.videos.length} vids)`
+            `Google Search "${result.searchBundle.query}" -> Right Panel (${result.searchBundle.web.length} web, ${result.searchBundle.images.length} imgs, ${result.searchBundle.videos.length} vids)`
           );
         }
         if (result.commsMessages) {
@@ -1163,6 +1170,11 @@ export const App: React.FC = () => {
       search: async (query: string, mode: 'all' | 'web' | 'images' | 'videos' = 'all') => {
         const b = await runUltronWebSearch(query, mode, stateRefs.current.uiConfig.adultMode);
         setActiveSearchBundle(b);
+        setUiConfig((prev) => ({
+          ...prev,
+          rightPanelMode: 'search_details',
+          mobileActivePanel: 'controls',
+        }));
         return b;
       },
       speak: (txt: string) => speakReply(txt, 'speaking'),
@@ -1254,6 +1266,11 @@ export const App: React.FC = () => {
       isProcessing={isProcessing}
       isSpeaking={isSpeaking}
       toastNotice={toastNotice}
+      rightPanelMode={uiConfig.rightPanelMode || 'command_details'}
+      onChangeRightPanelMode={(mode) =>
+        setUiConfig((prev) => ({ ...prev, rightPanelMode: mode }))
+      }
+      searchBundle={activeSearchBundle}
       onSendMessage={handleSendMessage}
       onReplayLastSpeech={(txt) => speakReply(txt, 'speaking')}
     />
@@ -1407,7 +1424,7 @@ export const App: React.FC = () => {
                 className="h-full min-h-0 flex flex-col justify-between overflow-hidden relative gap-1.5"
               >
                 <OmniViewportDeck
-                  searchBundle={activeSearchBundle}
+                  searchBundle={null}
                   onCloseSearch={() => setActiveSearchBundle(null)}
                   commsMessages={activeCommsMessages}
                   onCloseComms={() => setActiveCommsMessages(null)}
@@ -1490,7 +1507,7 @@ export const App: React.FC = () => {
           >
             {[
               { id: 'stage', label: 'ULTRON STAGE' },
-              { id: 'controls', label: 'CHAT & LOGS' },
+              { id: 'controls', label: 'COMMAND DETAILS' },
               { id: 'details', label: 'VAULT & TASKS' },
             ].map((tabItem) => (
               <button
@@ -1526,13 +1543,13 @@ export const App: React.FC = () => {
             {uiConfig.layoutMode === 'swapped_wings' ? controlsWing : detailsWing}
           </div>
 
-          {/* MIDDLE COLUMN: Omni-Viewport Deck (Search / Images / Videos / Unseen Comms / Live Widgets) + Compact Ultron */}
+          {/* MIDDLE COLUMN: Omni-Viewport Deck (Unseen Comms / Live Widgets) + Compact Ultron */}
           <div
             id="ultron-center-stage"
             className="h-full min-h-0 flex flex-col justify-between overflow-hidden relative"
           >
             <OmniViewportDeck
-              searchBundle={activeSearchBundle}
+              searchBundle={null}
               onCloseSearch={() => setActiveSearchBundle(null)}
               commsMessages={activeCommsMessages}
               onCloseComms={() => setActiveCommsMessages(null)}
