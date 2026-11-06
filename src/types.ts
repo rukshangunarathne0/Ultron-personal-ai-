@@ -286,10 +286,38 @@ export interface UltronCodePayload {
   summary?: string;
 }
 
+export type UltronBrowserTabKind = 'web' | 'image' | 'video';
+export type UltronBrowserViewMode = 'proxy' | 'direct' | 'reader';
+
+export interface UltronBrowserTab {
+  id: string;
+  kind: UltronBrowserTabKind;
+  url: string;
+  embedUrl?: string;
+  sourceUrl?: string;
+  title: string;
+  viewMode: UltronBrowserViewMode;
+  history: string[];
+  createdAt: string;
+}
+
 export interface UltronToolCommand {
   searchQuery?: string;
   searchMode?: 'all' | 'web' | 'images' | 'videos';
   readUrl?: string;
+  openTab?: {
+    url: string;
+    kind?: UltronBrowserTabKind;
+    title?: string;
+    embedUrl?: string;
+  };
+  openTabs?: Array<{
+    url: string;
+    kind?: UltronBrowserTabKind;
+    title?: string;
+    embedUrl?: string;
+  }>;
+  closeTabTarget?: string;
   commsAction?: {
     platform: CommsPlatform | 'all';
     operation: 'connect' | 'check_unseen' | 'send';

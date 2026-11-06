@@ -18,6 +18,7 @@ import {
 import {
   ImageSearchItem,
   SearchBundle,
+  UltronBrowserTabKind,
   UltronLiveWidget,
   UnseenCommsMessage,
   VideoSearchItem,
@@ -34,6 +35,13 @@ interface OmniViewportDeckProps {
   onRemoveWidget: (id: string) => void;
   codeOutput: string | null;
   onCloseCodeOutput: () => void;
+  onOpenInAppTab?: (item: {
+    url: string;
+    kind?: UltronBrowserTabKind;
+    title?: string;
+    embedUrl?: string;
+    sourceUrl?: string;
+  }) => void;
 }
 
 const MountedWidgetCard: React.FC<{
@@ -100,6 +108,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
   onRemoveWidget,
   codeOutput,
   onCloseCodeOutput,
+  onOpenInAppTab,
 }) => {
   const [mediaTab, setMediaTab] = useState<'images' | 'videos'>('images');
   const [playingVideo, setPlayingVideo] = useState<VideoSearchItem | null>(null);
@@ -372,22 +381,35 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                     <Copy className="w-2.5 h-2.5" />
                     {copiedKey === 'lightbox' ? 'COPIED' : 'COPY PHOTO'}
                   </button>
-                  <a
-                    href={selectedImage.imageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-amber-300 hover:underline flex items-center gap-0.5"
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenInAppTab?.({
+                        url: selectedImage.imageUrl,
+                        kind: 'image',
+                        title: selectedImage.title,
+                        sourceUrl: selectedImage.sourceUrl,
+                      })
+                    }
+                    className="text-amber-300 hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
-                    FULL PHOTO <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                  <a
-                    href={selectedImage.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-cyan-300 hover:underline flex items-center gap-0.5"
-                  >
-                    SITE <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
+                    OPEN TAB
+                  </button>
+                  {selectedImage.sourceUrl && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenInAppTab?.({
+                          url: selectedImage.sourceUrl,
+                          kind: 'web',
+                          title: selectedImage.title,
+                        })
+                      }
+                      className="text-cyan-300 hover:underline flex items-center gap-0.5 cursor-pointer"
+                    >
+                      SITE TAB
+                    </button>
+                  )}
                 </div>
               </div>
               <button
@@ -467,15 +489,21 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                     </button>
                     <div className="absolute inset-x-0 bottom-0 bg-black/80 px-1 py-0.5 flex items-center justify-between gap-1 text-[8.5px] font-mono-tech text-white">
                       <span className="truncate">{img.title}</span>
-                      <a
-                        href={img.imageUrl || img.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Open direct photo link"
-                        className="text-amber-300 hover:text-white shrink-0"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onOpenInAppTab?.({
+                            url: img.imageUrl || img.thumbnailUrl,
+                            kind: 'image',
+                            title: img.title,
+                            sourceUrl: img.sourceUrl,
+                          })
+                        }
+                        title="Open photo in Ultron Web Tab"
+                        className="px-1 border border-amber-400/60 bg-amber-950/60 text-amber-200 hover:text-white shrink-0 cursor-pointer"
                       >
-                        <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
+                        TAB
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -486,9 +514,19 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {searchBundle.videos.map((vid) => {
                   const canInlinePlay = Boolean(vid.directFileUrl || vid.embedUrl);
+                  const openVideoInTab = () => {
+                    onOpenInAppTab?.({
+                      url: vid.directFileUrl || vid.watchUrl,
+                      embedUrl: vid.embedUrl,
+                      kind: 'video',
+                      title: vid.title,
+                    });
+                  };
                   const onActivateVideo = () => {
                     if (canInlinePlay) {
                       setPlayingVideo(vid);
+                    } else if (onOpenInAppTab) {
+                      openVideoInTab();
                     } else {
                       window.open(vid.watchUrl, '_blank', 'noopener,noreferrer');
                     }
@@ -518,11 +556,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                           </div>
                         )}
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-red-600/45">
-                          {canInlinePlay ? (
-                            <Play className="w-5 h-5 text-white fill-white" />
-                          ) : (
-                            <ExternalLink className="w-4 h-4 text-amber-300" />
-                          )}
+                          <Play className="w-5 h-5 text-white fill-white" />
                         </div>
                         {vid.duration && (
                           <span className="absolute bottom-0.5 right-0.5 bg-black/85 px-1 text-[8.5px] font-mono-tech text-white">
@@ -543,19 +577,18 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
+                              onClick={openVideoInTab}
+                              className="px-1 border border-amber-400/60 bg-amber-950/50 text-amber-200 hover:text-white cursor-pointer"
+                            >
+                              OPEN TAB
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => copyLink(vid.watchUrl, vid.videoId)}
                               className="text-emerald-300 hover:underline cursor-pointer"
                             >
-                              {copiedKey === vid.videoId ? 'COPIED' : 'COPY'}
+                              {copiedKey === vid.videoId ? 'OK' : 'COPY'}
                             </button>
-                            <a
-                              href={vid.watchUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-amber-300 hover:underline flex items-center gap-0.5"
-                            >
-                              OPEN <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
                           </div>
                         </div>
                       </div>

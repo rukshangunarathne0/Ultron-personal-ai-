@@ -11,6 +11,8 @@ import {
   SearchBundle,
   ThinkingStepId,
   UltronActionPayload,
+  UltronBrowserTab,
+  UltronBrowserTabKind,
   UltronCodePayload,
   UltronEmotion,
   UltronLiveWidget,
@@ -36,6 +38,18 @@ import {
   verifyTelegramToken,
 } from './omniTools';
 import { PersistedCodeState } from './codeEngine';
+import { detectInAppBrowserIntent } from './browserEngine';
+
+export interface BrowserCommandPayload {
+  openTabs?: Array<{
+    url: string;
+    kind?: UltronBrowserTabKind;
+    title?: string;
+    embedUrl?: string;
+    sourceUrl?: string;
+  }>;
+  closeTabTarget?: string;
+}
 
 export interface BrainTurnResult {
   answer: string;
@@ -44,6 +58,7 @@ export interface BrainTurnResult {
   memoryUpdate: MemoryUpdatePayload;
   ultronAction?: UltronActionPayload;
   ultronCode?: UltronCodePayload;
+  browserCommand?: BrowserCommandPayload;
   searchBundle?: SearchBundle;
   commsMessages?: UnseenCommsMessage[];
   updatedCommsVault?: CommsVaultConfig;
@@ -939,6 +954,8 @@ export async function processRukAiTurn(params: {
   voiceConfig?: VoiceConfig;
   commsVault?: CommsVaultConfig;
   liveWidgets?: UltronLiveWidget[];
+  openBrowserTabs?: UltronBrowserTab[];
+  currentSearchBundle?: SearchBundle | null;
   codeState?: PersistedCodeState;
   onStepChange?: (step: ThinkingStepId) => void;
 }): Promise<BrainTurnResult> {
@@ -952,6 +969,8 @@ export async function processRukAiTurn(params: {
     voiceConfig,
     commsVault,
     liveWidgets = [],
+    openBrowserTabs = [],
+    currentSearchBundle,
     codeState,
     onStepChange,
   } = params;
@@ -1203,12 +1222,99 @@ export async function processRukAiTurn(params: {
     };
   }
 
+  // =========================================================================
+  // IN-APP TABBED MINI BROWSER & MEDIA PANEL COMMANDS ("open this website", etc.)
+  // =========================================================================
+  const adultEnabled = uiConfig?.adultMode ?? true;
+  const browserIntent = detectInAppBrowserIntent({
+    userText: requestText,
+    searchBundle: currentSearchBundle,
+    recentChat,
+  });
+
+  if (browserIntent.closeTabTarget) {
+    onStepChange?.(7);
+    const ans =
+      browserIntent.closeTabTarget === '*'
+        ? 'Closed all open tabs in your Ultron Web panel, Rukshan.'
+        : 'Closed the active tab in your Ultron Web panel, Rukshan.';
+    return {
+      answer: ans,
+      rawModelOutput: ans,
+      xmlPayloadSent: '',
+      memoryUpdate: { save: [], delete: [] },
+      browserCommand: { closeTabTarget: browserIntent.closeTabTarget },
+      updatedCommsVault: workingVault,
+      matchedMemories,
+      emotion: 'loyal',
+    };
+  }
+
+  if (browserIntent.openTab) {
+    onStepChange?.(7);
+    const label =
+      browserIntent.openTab.title ||
+      browserIntent.openTab.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40);
+    const kindWord =
+      browserIntent.openTab.kind === 'image'
+        ? 'image'
+        : browserIntent.openTab.kind === 'video'
+        ? 'video'
+        : 'website';
+    const ans = `Opened ${kindWord} "${label}" in a tab inside your Ultron Web panel, Rukshan.`;
+    return {
+      answer: ans,
+      rawModelOutput: ans,
+      xmlPayloadSent: '',
+      memoryUpdate: { save: [], delete: [] },
+      browserCommand: { openTabs: [browserIntent.openTab] },
+      updatedCommsVault: workingVault,
+      matchedMemories,
+      emotion: 'loyal',
+    };
+  }
+
+  if (browserIntent.siteSearchQueryToOpen && !STRICT_ILLEGAL_CHECK_RE.test(requestText)) {
+    onStepChange?.(3);
+    try {
+      const found = await runUltronWebSearch(
+        browserIntent.siteSearchQueryToOpen,
+        'web',
+        adultEnabled
+      );
+      if (found.web.length > 0) {
+        onStepChange?.(7);
+        const topSite = found.web[0];
+        const ans = `Opened "${topSite.title}" (${topSite.url}) in a tab inside your Ultron Web panel, Rukshan.`;
+        return {
+          answer: ans,
+          rawModelOutput: ans,
+          xmlPayloadSent: '',
+          memoryUpdate: { save: [], delete: [] },
+          browserCommand: {
+            openTabs: [
+              {
+                url: topSite.url,
+                kind: 'web',
+                title: topSite.title,
+              },
+            ],
+          },
+          updatedCommsVault: workingVault,
+          matchedMemories,
+          emotion: 'loyal',
+        };
+      }
+    } catch {
+      // fall through to full LLM turn
+    }
+  }
+
   // STEP 3 - PLAN & PRE-FETCH LIVE WEB / IMAGES / VIDEOS IF NEEDED
   onStepChange?.(3);
   let searchBundle: SearchBundle | undefined;
   let fetchedPageText: string | undefined;
 
-  const adultEnabled = uiConfig?.adultMode ?? true;
   const searchIntent = detectLiveSearchIntent(requestText);
   if (searchIntent.needed && !STRICT_ILLEGAL_CHECK_RE.test(requestText)) {
     try {
@@ -1236,9 +1342,10 @@ export async function processRukAiTurn(params: {
     voiceConfig,
     commsVault: workingVault,
     liveWidgets,
+    openBrowserTabs,
     codeState,
     tasks,
-    searchBundle,
+    searchBundle: searchBundle || currentSearchBundle,
     unseenMessages: preFetchedUnseen,
     fetchedPageText,
   });
@@ -1342,9 +1449,10 @@ export async function processRukAiTurn(params: {
             voiceConfig,
             commsVault: workingVault,
             liveWidgets,
+            openBrowserTabs,
             codeState,
             tasks,
-            searchBundle,
+            searchBundle: searchBundle || currentSearchBundle,
             unseenMessages: preFetchedUnseen,
             fetchedPageText,
           });
@@ -1390,7 +1498,22 @@ export async function processRukAiTurn(params: {
     memoryUpdate,
     ultronAction: modelAction,
     ultronCode: modelCode,
+    ultronTool: finalTool,
   } = parseRukAiModelResponse(rawModelOutput);
+
+  let browserCommand: BrowserCommandPayload | undefined;
+  if (finalTool) {
+    const collectedTabs = [
+      ...(finalTool.openTab ? [finalTool.openTab] : []),
+      ...(finalTool.openTabs || []),
+    ];
+    if (collectedTabs.length > 0 || finalTool.closeTabTarget) {
+      browserCommand = {
+        openTabs: collectedTabs.length > 0 ? collectedTabs : undefined,
+        closeTabTarget: finalTool.closeTabTarget,
+      };
+    }
+  }
 
   // If adultMode is ON and every cloud LLM gave a canned refusal on a legal 18+ query,
   // auto-fetch unfiltered search (if not already fetched) and synthesize direct info + img + video links!
@@ -1451,6 +1574,7 @@ export async function processRukAiTurn(params: {
     memoryUpdate,
     ultronAction,
     ultronCode,
+    browserCommand,
     searchBundle,
     commsMessages: preFetchedUnseen,
     updatedCommsVault: workingVault,

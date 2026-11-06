@@ -36,6 +36,7 @@ import {
   MemoryItem,
   SearchBundle,
   ThinkingStepId,
+  UltronBrowserTabKind,
   UltronCodePayload,
   UltronEmotion,
   UltronLeftPanelMode,
@@ -67,6 +68,15 @@ interface LeftDetailsHudProps {
   latestAssistantReply?: string;
   isProcessing?: boolean;
   onReplaySpeech?: (text: string) => void;
+  onOpenInAppTab?: (item: {
+    url: string;
+    kind?: UltronBrowserTabKind;
+    title?: string;
+    embedUrl?: string;
+    sourceUrl?: string;
+  }) => void;
+  openTabsCount?: number;
+  onToggleMiniBrowser?: () => void;
   onToggleAdultMode: () => void;
   onToggleMobilePreview: () => void;
   onResetUi: () => void;
@@ -96,7 +106,10 @@ const TYPE_COLORS: Record<MemoryCategory, string> = [
   ['person', 'border-pink-500/60 text-pink-300 bg-pink-950/40'],
 ].reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<MemoryCategory, string>);
 
-function renderLinkifiedText(text: string): React.ReactNode {
+function renderLinkifiedText(
+  text: string,
+  onOpenInAppTab?: (item: { url: string; title?: string }) => void
+): React.ReactNode {
   const normalized = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2');
   const parts = normalized.split(/(https?:\/\/[^\s<>")]+)/g);
   return parts.map((part, idx) => {
@@ -105,14 +118,17 @@ function renderLinkifiedText(text: string): React.ReactNode {
       const trailing = part.slice(cleanHref.length);
       return (
         <React.Fragment key={idx}>
-          <a
-            href={cleanHref}
-            target="_blank"
-            rel="noreferrer"
-            className="text-amber-300 underline hover:text-white break-all"
+          <button
+            type="button"
+            onClick={() =>
+              onOpenInAppTab
+                ? onOpenInAppTab({ url: cleanHref })
+                : window.open(cleanHref, '_blank', 'noopener,noreferrer')
+            }
+            className="text-amber-300 underline hover:text-white break-all text-left cursor-pointer"
           >
             {cleanHref}
-          </a>
+          </button>
           {trailing}
         </React.Fragment>
       );
@@ -142,6 +158,9 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
   latestAssistantReply,
   isProcessing,
   onReplaySpeech,
+  onOpenInAppTab,
+  openTabsCount = 0,
+  onToggleMiniBrowser,
   onToggleAdultMode,
   onToggleMobilePreview,
   onResetUi,
@@ -296,7 +315,7 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
                 </div>
               ) : latestAssistantReply ? (
                 <p className="text-[11px] text-red-50 whitespace-pre-wrap leading-relaxed break-words">
-                  {renderLinkifiedText(latestAssistantReply)}
+                  {renderLinkifiedText(latestAssistantReply, onOpenInAppTab)}
                 </p>
               ) : (
                 <p className="text-[10.5px] text-red-200/80">
@@ -318,18 +337,24 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
               searchBundle.web.map((site, idx) => (
                 <div
                   key={idx}
-                  className="p-2 border border-white/20 bg-black/50 hover:border-white/65 transition-colors space-y-1"
+                  className="p-2 border border-white/20 bg-black/50 hover:border-amber-400/70 transition-colors space-y-1"
                 >
                   <div className="flex items-start justify-between gap-1.5">
-                    <a
-                      href={site.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11.5px] font-bold text-amber-200 hover:underline leading-tight flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenInAppTab
+                          ? onOpenInAppTab({
+                              url: site.url,
+                              kind: 'web',
+                              title: site.title,
+                            })
+                          : window.open(site.url, '_blank', 'noopener,noreferrer')
+                      }
+                      className="text-left text-[11.5px] font-bold text-amber-200 hover:text-white hover:underline leading-tight flex items-center gap-1 cursor-pointer"
                     >
                       <span className="line-clamp-2">{site.title}</span>
-                      <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                    </a>
+                    </button>
                     <span className="font-mono-tech text-[8px] px-1 border border-white/25 text-red-200 shrink-0">
                       {site.source}
                     </span>
@@ -338,22 +363,40 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
                     <p className="text-[10.5px] text-white/90 leading-snug">{site.snippet}</p>
                   )}
                   <div className="flex items-center justify-between gap-1.5 font-mono-tech text-[8.5px] pt-0.5">
-                    <a
-                      href={site.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-emerald-300/90 hover:underline truncate"
-                    >
-                      {site.url}
-                    </a>
                     <button
                       type="button"
-                      onClick={() => copySiteUrl(site.url, idx)}
-                      className="text-amber-300 hover:underline flex items-center gap-0.5 shrink-0 cursor-pointer"
+                      onClick={() =>
+                        onOpenInAppTab?.({
+                          url: site.url,
+                          kind: 'web',
+                          title: site.title,
+                        })
+                      }
+                      className="px-1.5 py-0.5 border border-amber-400/65 bg-amber-950/45 hover:bg-amber-900/60 text-amber-200 font-bold flex items-center gap-1 shrink-0 cursor-pointer"
                     >
-                      <Copy className="w-2.5 h-2.5" />
-                      {copiedIdx === idx ? 'COPIED' : 'COPY'}
+                      <Globe className="w-2.5 h-2.5" />
+                      <span>OPEN TAB</span>
                     </button>
+                    <span className="text-emerald-300/85 truncate flex-1">{site.url}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copySiteUrl(site.url, idx)}
+                        className="text-amber-300 hover:underline flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <Copy className="w-2.5 h-2.5" />
+                        {copiedIdx === idx ? 'OK' : 'COPY'}
+                      </button>
+                      <a
+                        href={site.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open in External Browser"
+                        className="text-red-200/75 hover:text-white"
+                      >
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
                   </div>
                 </div>
               ))
@@ -427,6 +470,20 @@ export const LeftDetailsHud: React.FC<LeftDetailsHudProps> = ({
                 }`}
               >
                 <span>{uiConfig.mobileViewMode === 'force_mobile' ? 'MOB ON' : 'MOBILE'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onToggleMiniBrowser}
+                title="Open or Restore Ultron In-App Web / Media Tab Panel"
+                className={`px-1.5 py-0.5 border flex items-center gap-0.5 cursor-pointer ${
+                  openTabsCount > 0
+                    ? 'border-amber-400/80 bg-amber-950/50 text-amber-200 font-bold'
+                    : 'border-white/20 bg-black/40 text-red-200/80 hover:bg-white/10'
+                }`}
+              >
+                <Globe className="w-2.5 h-2.5" />
+                <span>{openTabsCount > 0 ? `TABS(${openTabsCount})` : 'WEB'}</span>
               </button>
 
               <button

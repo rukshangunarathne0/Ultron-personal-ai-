@@ -140,6 +140,18 @@ export function rukAiApiMiddleware(
     return;
   }
 
+  if (url === '/api/proxy' && (req.method === 'GET' || req.method === 'OPTIONS')) {
+    const proxyModPath = '../api/proxy.js';
+    import(proxyModPath)
+      .then((mod) => mod.default(req, res))
+      .catch((err) =>
+        sendJson(res, 500, {
+          error: err instanceof Error ? err.message : 'Proxy handler error',
+        })
+      );
+    return;
+  }
+
   if (
     url === '/api/search' ||
     url === '/api/comms' ||

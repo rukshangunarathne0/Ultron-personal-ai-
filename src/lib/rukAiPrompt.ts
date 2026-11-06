@@ -9,6 +9,8 @@ import {
   ThinkingStepInfo,
   UltronActionPayload,
   UltronAvatarPresence,
+  UltronBrowserTab,
+  UltronBrowserTabKind,
   UltronCodePayload,
   UltronDomPatchAction,
   UltronLayoutMode,
@@ -92,6 +94,12 @@ STEP 4 - DO THE TASK
     - Right-side panel is named COMMAND PANEL (mic, voice feed, and text command box).
     - Whenever Rukshan asks you to open/search Google, the LEFT side switches to GOOGLE // INFO & SITES (leftPanelMode="google_info") showing information & websites, while the TOP center deck shows PHOTOS & VIDS!
     - Whenever Rukshan asks you to "bring back the command details" (or restore/show Command Details), emit <ultron_action>{"ui":{"leftPanelMode":"command_details"}}</ultron_action> to restore COMMAND DETAILS to the left side!
+  * IN-APP MINI BROWSER & MEDIA TAB PANEL (#ultron-mini-browser):
+    - You have a built-in floating multi-tab Mini Browser & Media Panel right inside Ultron Web that opens websites (via server proxy + direct + dark reader), images (with zoom), and videos (embedded HD player) as tabs inside the Ultron HUD!
+    - Whenever Rukshan says "open [website/url/image/video]", "open this website", "open the first site/image/video", or "open [site] in a tab", emit:
+      <ultron_tool>{"openTab":{"url":"https://...","kind":"web|image|video","title":"Site or Media Title"}}</ultron_tool>
+      (or "openTabs":[...] for multiple tabs, or "closeTabTarget":"active|*" when he asks to close a tab or all tabs).
+    - Never say you cannot open websites inside the app — open the tab directly inside Ultron Web via <ultron_tool>{"openTab":...}</ultron_tool>!
   * To customize Mobile View specifically:
     - Target BOTH @media (max-width: 768px) { ... } AND #ultron-root[data-mobile-view="true"] { ... } in cssPatch / liveCss so your mobile UI changes work on phones AND when previewing mobile view on desktop!
     - If Rukshan asks to "switch to mobile view" or "show me mobile view", set "ui": {"mobileViewMode": "force_mobile"} in <ultron_action> (or "auto" / "force_desktop").
@@ -143,11 +151,13 @@ Output your spoken/visible reply followed by the XML control blocks below.
 <memory_update>
 {"save": [{"type": "fact|preference|project|decision|person", "text": "..."}], "delete": []}
 </memory_update>
-3) Optional — Trigger Live Web/Image/Video Search or WhatsApp/Telegram/GitHub Action (if not already in <live_data>):
+3) Optional — Trigger Live Search, Open In-App Website/Image/Video Tab, or WhatsApp/Telegram/GitHub Action:
 <ultron_tool>
 {
   "searchQuery": "topic to search on web, images & YouTube",
   "searchMode": "all",
+  "openTab": {"url": "https://...", "kind": "web|image|video", "title": "..."},
+  "closeTabTarget": "",
   "commsAction": {
     "platform": "whatsapp|telegram|github|all",
     "operation": "connect|check_unseen|send",
@@ -271,6 +281,7 @@ export function buildRukAiTurnPayload(params: {
   voiceConfig?: VoiceConfig;
   commsVault?: CommsVaultConfig;
   liveWidgets?: UltronLiveWidget[];
+  openBrowserTabs?: UltronBrowserTab[];
   codeState?: PersistedCodeState;
   tasks?: DirectiveTask[];
   searchBundle?: SearchBundle | null;
@@ -286,6 +297,7 @@ export function buildRukAiTurnPayload(params: {
     voiceConfig,
     commsVault,
     liveWidgets = [],
+    openBrowserTabs = [],
     codeState,
     tasks = [],
     searchBundle,
@@ -340,6 +352,11 @@ github={authorized:${commsVault.github.authorized}}`
     .map((t) => t.title)
     .join(' | ');
 
+  const tabsInfo =
+    openBrowserTabs.length > 0
+      ? openBrowserTabs.map((t) => `[${t.kind}] "${t.title}" (${t.url})`).join(' | ')
+      : 'none';
+
   const codeCrudDump = formatCodeCrudStateForPrompt(codeState);
 
   const systemStateBlock =
@@ -350,6 +367,7 @@ ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresen
 voice={provider:"${voiceConfig.provider}", groqVoice:"${voiceConfig.groqVoice}", pitch:${voiceConfig.pitch}, ultronShiftRate:${voiceConfig.ultronShiftRate}, subBassDb:${voiceConfig.subBassDb}, ringModHz:${voiceConfig.ringModHz}}
 mp3Vault=${mp3Info}
 comms=${commsInfo}
+openInAppBrowserTabs=${tabsInfo}
 mountedWidgets=${widgetInfo}
 activeDirectives=${openTasks || 'none'}
 <code_crud_state>
@@ -886,6 +904,25 @@ function sanitizeUltronCode(raw: any): UltronCodePayload | undefined {
   return has ? out : undefined;
 }
 
+function sanitizeOpenTabItem(item: any) {
+  if (!item || typeof item !== 'object' || typeof item.url !== 'string' || !item.url.trim()) {
+    return undefined;
+  }
+  const k = item.kind;
+  const kind: UltronBrowserTabKind | undefined = ['web', 'image', 'video'].includes(k)
+    ? k
+    : undefined;
+  return {
+    url: item.url.trim(),
+    kind,
+    title: typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 48) : undefined,
+    embedUrl:
+      typeof item.embedUrl === 'string' && item.embedUrl.trim()
+        ? item.embedUrl.trim()
+        : undefined,
+  };
+}
+
 function sanitizeUltronTool(raw: any): UltronToolCommand | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const out: UltronToolCommand = {};
@@ -900,6 +937,24 @@ function sanitizeUltronTool(raw: any): UltronToolCommand | undefined {
   }
   if (typeof raw.readUrl === 'string' && /^https?:\/\//i.test(raw.readUrl.trim())) {
     out.readUrl = raw.readUrl.trim();
+    has = true;
+  }
+  const singleTab = sanitizeOpenTabItem(raw.openTab);
+  if (singleTab) {
+    out.openTab = singleTab;
+    has = true;
+  }
+  if (Array.isArray(raw.openTabs)) {
+    const list = raw.openTabs.map(sanitizeOpenTabItem).filter(Boolean) as NonNullable<
+      UltronToolCommand['openTabs']
+    >;
+    if (list.length > 0) {
+      out.openTabs = list;
+      has = true;
+    }
+  }
+  if (typeof raw.closeTabTarget === 'string' && raw.closeTabTarget.trim()) {
+    out.closeTabTarget = raw.closeTabTarget.trim();
     has = true;
   }
   if (raw.commsAction && typeof raw.commsAction === 'object') {

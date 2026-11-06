@@ -34,9 +34,13 @@ interface RightControlHudProps {
   toastNotice: string | null;
   onSendMessage: (text: string, viaVoice?: boolean) => void;
   onReplayLastSpeech: (text: string) => void;
+  onOpenInAppTab?: (item: { url: string; title?: string }) => void;
 }
 
-function renderLinkifiedText(text: string): React.ReactNode {
+function renderLinkifiedText(
+  text: string,
+  onOpenInAppTab?: (item: { url: string; title?: string }) => void
+): React.ReactNode {
   const normalized = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2');
   const parts = normalized.split(/(https?:\/\/[^\s<>")]+)/g);
   return parts.map((part, idx) => {
@@ -45,14 +49,17 @@ function renderLinkifiedText(text: string): React.ReactNode {
       const trailing = part.slice(cleanHref.length);
       return (
         <React.Fragment key={idx}>
-          <a
-            href={cleanHref}
-            target="_blank"
-            rel="noreferrer"
-            className="text-amber-300 underline hover:text-white break-all"
+          <button
+            type="button"
+            onClick={() =>
+              onOpenInAppTab
+                ? onOpenInAppTab({ url: cleanHref })
+                : window.open(cleanHref, '_blank', 'noopener,noreferrer')
+            }
+            className="text-amber-300 underline hover:text-white break-all text-left cursor-pointer"
           >
             {cleanHref}
-          </a>
+          </button>
           {trailing}
         </React.Fragment>
       );
@@ -62,10 +69,10 @@ function renderLinkifiedText(text: string): React.ReactNode {
 }
 
 const QUICK_DIRECTIVES = [
+  'Open wikipedia.org in a tab',
   'Open Google and give me details on Iron Man vs Ultron',
   'Bring back the command details',
   'Go to my WhatsApp',
-  'Switch to mobile view',
 ];
 
 export const RightControlHud: React.FC<RightControlHudProps> = ({
@@ -87,6 +94,7 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
   toastNotice,
   onSendMessage,
   onReplayLastSpeech,
+  onOpenInAppTab,
 }) => {
   const [inputText, setInputText] = useState('');
   const [showRecentLog, setShowRecentLog] = useState(false);
@@ -309,7 +317,7 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
             ) : latestAssistant ? (
               <>
                 <p className="text-[11px] text-red-50 whitespace-pre-wrap leading-relaxed break-words">
-                  {renderLinkifiedText(latestAssistant.content)}
+                  {renderLinkifiedText(latestAssistant.content, onOpenInAppTab)}
                 </p>
                 {latestAssistant.memoryUpdate &&
                   (latestAssistant.memoryUpdate.save.length > 0 ||
@@ -349,7 +357,7 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
                     {m.role === 'user' ? 'YOU:' : 'AI:'}
                   </span>
                   <span className="whitespace-pre-wrap break-words">
-                    {renderLinkifiedText(m.content)}
+                    {renderLinkifiedText(m.content, onOpenInAppTab)}
                   </span>
                 </div>
               ))}

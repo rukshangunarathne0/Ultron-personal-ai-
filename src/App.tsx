@@ -12,6 +12,9 @@ import {
   SearchBundle,
   ThinkingStepId,
   UltronActionPayload,
+  UltronBrowserTab,
+  UltronBrowserTabKind,
+  UltronBrowserViewMode,
   UltronCodePayload,
   UltronDomPatchAction,
   UltronEmotion,
@@ -26,6 +29,8 @@ import { RightControlHud } from './components/RightControlHud';
 import { VoiceBrainModal } from './components/VoiceBrainModal';
 import { OmniViewportDeck } from './components/OmniViewportDeck';
 import { CommsHubModal } from './components/CommsHubModal';
+import { UltronMiniBrowserPanel } from './components/UltronMiniBrowserPanel';
+import { createBrowserTabObject } from './lib/browserEngine';
 import { applyMemoryUpdate, shouldBeProfileFact } from './lib/memorySearch';
 import { processRukAiTurn, runAutonomousSovereignPulse } from './lib/rukAiBrain';
 import { ultronVoice } from './lib/voiceEngine';
@@ -56,6 +61,7 @@ const LOCAL_STORAGE_VOICE_KEY = 'ruk_ai_voice_cfg_v2';
 const LOCAL_STORAGE_BRAIN_KEY = 'ruk_ai_brain_cfg_v4';
 const LOCAL_STORAGE_UI_KEY = 'ruk_ai_ultron_ui_v3';
 const LOCAL_STORAGE_COMMS_KEY = 'ruk_ai_comms_vault_v1';
+const LOCAL_STORAGE_TABS_KEY = 'ruk_ai_browser_tabs_v1';
 
 const DEFAULT_UI_CONFIG: UltronUiConfig = {
   theme: 'crimson_overlord',
@@ -212,6 +218,27 @@ export const App: React.FC = () => {
   const [activeSearchBundle, setActiveSearchBundle] = useState<SearchBundle | null>(null);
   const [showTopMedia, setShowTopMedia] = useState<boolean>(true);
   const [activeCommsMessages, setActiveCommsMessages] = useState<UnseenCommsMessage[] | null>(null);
+  const [browserTabs, setBrowserTabs] = useState<UltronBrowserTab[]>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_STORAGE_TABS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.slice(0, 12) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeBrowserTabId, setActiveBrowserTabId] = useState<string | null>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_STORAGE_TABS_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) && parsed[0]?.id ? parsed[0].id : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isBrowserMinimized, setIsBrowserMinimized] = useState<boolean>(false);
   const [codeState, setCodeState] = useState<PersistedCodeState>(() => loadPersistedCodeState());
   const [codeOutput, setCodeOutput] = useState<string | null>(null);
   const [isViewportNarrow, setIsViewportNarrow] = useState<boolean>(() =>
@@ -322,6 +349,14 @@ export const App: React.FC = () => {
       }
     });
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_TABS_KEY, JSON.stringify(browserTabs));
+    } catch {
+      // ignore
+    }
+  }, [browserTabs]);
 
   useEffect(() => {
     try {
@@ -602,6 +637,9 @@ export const App: React.FC = () => {
     voiceConfig,
     commsVault,
     codeState,
+    browserTabs,
+    activeBrowserTabId,
+    activeSearchBundle,
     isProcessing,
     isSpeaking,
     isListening,
@@ -615,10 +653,136 @@ export const App: React.FC = () => {
     voiceConfig,
     commsVault,
     codeState,
+    browserTabs,
+    activeBrowserTabId,
+    activeSearchBundle,
     isProcessing,
     isSpeaking,
     isListening,
   };
+
+  const handleOpenInAppTab = useCallback(
+    (item: {
+      url: string;
+      kind?: UltronBrowserTabKind;
+      title?: string;
+      embedUrl?: string;
+      sourceUrl?: string;
+    }) => {
+      if (!item.url || !item.url.trim()) return;
+      const newTab = createBrowserTabObject(item);
+      setBrowserTabs((prev) => {
+        // Reuse tab if exact same URL & kind is already open
+        const existing = prev.find(
+          (t) => t.url === newTab.url && t.kind === newTab.kind
+        );
+        if (existing) {
+          setActiveBrowserTabId(existing.id);
+          return prev;
+        }
+        const next = [...prev, newTab].slice(-12);
+        setActiveBrowserTabId(newTab.id);
+        return next;
+      });
+      setIsBrowserMinimized(false);
+    },
+    []
+  );
+
+  const handleCloseBrowserTab = useCallback((tabId: string) => {
+    setBrowserTabs((prev) => {
+      const next = prev.filter((t) => t.id !== tabId);
+      setActiveBrowserTabId((curId) =>
+        curId === tabId ? (next[next.length - 1]?.id ?? null) : curId
+      );
+      return next;
+    });
+  }, []);
+
+  const handleCloseAllBrowserTabs = useCallback(() => {
+    setBrowserTabs([]);
+    setActiveBrowserTabId(null);
+    setIsBrowserMinimized(false);
+  }, []);
+
+  const handleNavigateActiveTab = useCallback((nextUrl: string, nextTitle?: string) => {
+    const freshObj = createBrowserTabObject({ url: nextUrl, title: nextTitle });
+    setBrowserTabs((prev) =>
+      prev.map((t) =>
+        t.id === stateRefs.current.activeBrowserTabId ||
+        (!stateRefs.current.activeBrowserTabId && t === prev[0])
+          ? {
+              ...t,
+              kind: freshObj.kind,
+              url: freshObj.url,
+              embedUrl: freshObj.embedUrl,
+              title: nextTitle || freshObj.title,
+              viewMode: freshObj.viewMode,
+              history: [...t.history, freshObj.url].slice(-20),
+            }
+          : t
+      )
+    );
+  }, []);
+
+  const handleBackActiveTab = useCallback(() => {
+    setBrowserTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== stateRefs.current.activeBrowserTabId || t.history.length <= 1) {
+          return t;
+        }
+        const nextHist = t.history.slice(0, -1);
+        const prevUrl = nextHist[nextHist.length - 1];
+        const freshObj = createBrowserTabObject({ url: prevUrl });
+        return {
+          ...t,
+          kind: freshObj.kind,
+          url: freshObj.url,
+          embedUrl: freshObj.embedUrl,
+          title: freshObj.title,
+          history: nextHist,
+        };
+      })
+    );
+  }, []);
+
+  const handleChangeTabViewMode = useCallback(
+    (tabId: string, mode: UltronBrowserViewMode) => {
+      setBrowserTabs((prev) =>
+        prev.map((t) => (t.id === tabId ? { ...t, viewMode: mode } : t))
+      );
+    },
+    []
+  );
+
+  const handleUpdateTabMeta = useCallback(
+    (tabId: string, meta: { title?: string; url?: string }) => {
+      setBrowserTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                title: meta.title || t.title,
+                url: meta.url || t.url,
+              }
+            : t
+        )
+      );
+    },
+    []
+  );
+
+  const handleToggleMiniBrowser = useCallback(() => {
+    if (stateRefs.current.browserTabs.length === 0) {
+      handleOpenInAppTab({
+        url: 'https://en.wikipedia.org',
+        kind: 'web',
+        title: 'Wikipedia',
+      });
+    } else {
+      setIsBrowserMinimized((m) => !m);
+    }
+  }, [handleOpenInAppTab]);
 
   /**
    * Triggers an unprompted autonomous Ultron action (on idle timer, ACT NOW click, or MP3 drop!)
@@ -758,6 +922,8 @@ export const App: React.FC = () => {
           voiceConfig: snap.voiceConfig,
           commsVault: snap.commsVault,
           liveWidgets: snap.codeState.widgets,
+          openBrowserTabs: snap.browserTabs,
+          currentSearchBundle: snap.activeSearchBundle,
           codeState: snap.codeState,
           onStepChange: (step) => {
             setActiveStep(step);
@@ -791,6 +957,39 @@ export const App: React.FC = () => {
             'comms',
             `Checked unseen messages (${result.commsMessages.length} found)`
           );
+        }
+
+        // Execute In-App Mini Browser & Media Tab commands ("open this website", etc.)
+        if (result.browserCommand) {
+          if (result.browserCommand.closeTabTarget) {
+            const target = result.browserCommand.closeTabTarget;
+            if (target === '*') {
+              handleCloseAllBrowserTabs();
+            } else if (target === 'active' && snap.activeBrowserTabId) {
+              handleCloseBrowserTab(snap.activeBrowserTabId);
+            } else {
+              const foundTab = snap.browserTabs.find(
+                (t) =>
+                  t.id === target ||
+                  t.title.toLowerCase().includes(target.toLowerCase()) ||
+                  t.url.toLowerCase().includes(target.toLowerCase())
+              );
+              if (foundTab) handleCloseBrowserTab(foundTab.id);
+              else if (snap.activeBrowserTabId) handleCloseBrowserTab(snap.activeBrowserTabId);
+            }
+          }
+          if (result.browserCommand.openTabs && result.browserCommand.openTabs.length > 0) {
+            for (const item of result.browserCommand.openTabs) {
+              handleOpenInAppTab(item);
+            }
+            // If on mobile view and not on stage, show toast or keep floating panel visible!
+            pushAutoLog(
+              'search',
+              `Opened in-app tab: ${result.browserCommand.openTabs
+                .map((t) => t.title || t.url)
+                .join(', ')}`
+            );
+          }
         }
 
         // Execute live self-coding patches (<ultron_code>) written by Ultron!
@@ -1350,6 +1549,20 @@ export const App: React.FC = () => {
         },
       },
 
+      // 7. IN-APP MINI BROWSER & MEDIA TABS CRUD
+      browser: {
+        list: () => stateRefs.current.browserTabs,
+        open: (url: string, kind?: UltronBrowserTabKind, title?: string) =>
+          handleOpenInAppTab({ url, kind, title }),
+        activate: (tabId: string) => {
+          setActiveBrowserTabId(tabId);
+          setIsBrowserMinimized(false);
+        },
+        close: (tabId: string) => handleCloseBrowserTab(tabId),
+        closeAll: () => handleCloseAllBrowserTabs(),
+        minimize: (minimized = true) => setIsBrowserMinimized(minimized),
+      },
+
       // Legacy convenience aliases + Undo / Reset
       injectCss: (css: string, append = false) =>
         handleExecuteCrudCode({ liveCss: css, appendCss: append }),
@@ -1385,7 +1598,14 @@ export const App: React.FC = () => {
       },
       speak: (txt: string) => speakReply(txt, 'speaking'),
     };
-  }, [handleExecuteCrudCode, resetAllUiAndCode, speakReply]);
+  }, [
+    handleCloseAllBrowserTabs,
+    handleCloseBrowserTab,
+    handleExecuteCrudCode,
+    handleOpenInAppTab,
+    resetAllUiAndCode,
+    speakReply,
+  ]);
 
   const handleRemoveLiveWidget = (id: string) => {
     handleExecuteCrudCode({
@@ -1430,6 +1650,9 @@ export const App: React.FC = () => {
       latestAssistantReply={latestAssistantMsg?.content}
       isProcessing={isProcessing}
       onReplaySpeech={(txt) => speakReply(txt, 'speaking')}
+      onOpenInAppTab={handleOpenInAppTab}
+      openTabsCount={browserTabs.length}
+      onToggleMiniBrowser={handleToggleMiniBrowser}
       onToggleAdultMode={() =>
         setUiConfig((prev) => {
           const next = !prev.adultMode;
@@ -1481,6 +1704,7 @@ export const App: React.FC = () => {
       toastNotice={toastNotice}
       onSendMessage={handleSendMessage}
       onReplayLastSpeech={(txt) => speakReply(txt, 'speaking')}
+      onOpenInAppTab={handleOpenInAppTab}
     />
   );
 
@@ -1641,6 +1865,7 @@ export const App: React.FC = () => {
                   onRemoveWidget={handleRemoveLiveWidget}
                   codeOutput={codeOutput}
                   onCloseCodeOutput={() => setCodeOutput(null)}
+                  onOpenInAppTab={handleOpenInAppTab}
                 />
 
                 <div className="flex-1 min-h-[180px] flex items-end justify-center overflow-hidden">
@@ -1766,6 +1991,7 @@ export const App: React.FC = () => {
               onRemoveWidget={handleRemoveLiveWidget}
               codeOutput={codeOutput}
               onCloseCodeOutput={() => setCodeOutput(null)}
+              onOpenInAppTab={handleOpenInAppTab}
             />
             <div className="flex-1 min-h-[260px] flex items-end justify-center overflow-hidden">
               <UltronAvatarRig
@@ -1786,6 +2012,26 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* IN-APP FLOATING / DOCKABLE MULTI-TAB MINI BROWSER & MEDIA PANEL (z-30) */}
+      <UltronMiniBrowserPanel
+        tabs={browserTabs}
+        activeTabId={activeBrowserTabId}
+        isMinimized={isBrowserMinimized}
+        isMobileLayout={isMobileLayout}
+        onSelectTab={(id) => {
+          setActiveBrowserTabId(id);
+          setIsBrowserMinimized(false);
+        }}
+        onCloseTab={handleCloseBrowserTab}
+        onCloseAllTabs={handleCloseAllBrowserTabs}
+        onToggleMinimize={() => setIsBrowserMinimized((m) => !m)}
+        onOpenNewTab={(url, kind, title) => handleOpenInAppTab({ url, kind, title })}
+        onNavigateActiveTab={handleNavigateActiveTab}
+        onBackActiveTab={handleBackActiveTab}
+        onChangeTabViewMode={handleChangeTabViewMode}
+        onUpdateTabMeta={handleUpdateTabMeta}
+      />
 
       {/* MODAL (z-50): Voice, Brain & Sovereign Access Configuration */}
       <VoiceBrainModal
