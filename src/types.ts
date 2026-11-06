@@ -55,7 +55,13 @@ export interface ThinkingStepInfo {
   detail: string;
 }
 
-export type VoiceProvider = 'browser_ultron' | 'elevenlabs' | 'openai_tts' | 'custom_endpoint';
+export type VoiceProvider =
+  | 'browser_ultron'
+  | 'groq_orpheus'
+  | 'mp3_clone'
+  | 'elevenlabs'
+  | 'openai_tts'
+  | 'custom_endpoint';
 
 export interface VoiceConfig {
   provider: VoiceProvider;
@@ -65,6 +71,10 @@ export interface VoiceConfig {
   pitch: number; // default ~0.62 for deep Ultron cadence
   rate: number;  // default ~0.94
   roboticResonance: boolean; // Web Audio sub-bass & metallic chamber resonance
+  groqVoice: 'troy' | 'daniel' | 'austin';
+  ultronShiftRate: number; // 0.80..1.05 playback pitch/baritone shift for neural audio
+  cartesiaApiKey: string;
+  cartesiaVoiceId: string;
   elevenLabsApiKey: string;
   elevenLabsVoiceId: string; // e.g. pNInz6obpgDQGcFmaJgB (Adam) or nPczCjzI2devNBz1zQrb (Brian)
   elevenLabsModelId: string;

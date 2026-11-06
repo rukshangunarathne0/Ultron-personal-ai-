@@ -31,6 +31,10 @@ const DEFAULT_VOICE_CONFIG: VoiceConfig = {
   pitch: 0.62,
   rate: 0.94,
   roboticResonance: true,
+  groqVoice: 'troy',
+  ultronShiftRate: 0.88,
+  cartesiaApiKey: '',
+  cartesiaVoiceId: '',
   elevenLabsApiKey: '',
   elevenLabsVoiceId: 'nPczCjzI2devNBz1zQrb',
   elevenLabsModelId: 'eleven_multilingual_v2',
@@ -670,6 +674,10 @@ export const App: React.FC = () => {
         brainConfig={brainConfig}
         onChangeBrainConfig={setBrainConfig}
         onTestVoice={handleTestVoice}
+        onPreviewAmplitude={(amp) => {
+          setSpeechAmplitude(amp);
+          setEmotion(amp > 0.02 ? 'speaking' : 'sentinel');
+        }}
       />
     </main>
   );
