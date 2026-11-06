@@ -385,7 +385,7 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
                 {[
                   { id: 'autonomous_local', label: 'LOCAL CORE', sub: 'Zero-Key • Instant' },
                   { id: 'gemini', label: 'GOOGLE GEMINI', sub: 'Free Tier API Key' },
-                  { id: 'groq', label: 'GROQ LLAMA-3.3', sub: 'Free • Ultra-Fast' },
+                  { id: 'groq', label: 'GROQ GPT-OSS 120B', sub: 'Connected • 500 T/s' },
                   { id: 'openai', label: 'OPENAI GPT-4o', sub: 'Cloud API' },
                   { id: 'openrouter', label: 'OPENROUTER', sub: 'Any Model' },
                   { id: 'ollama', label: 'LOCAL OLLAMA', sub: 'Offline PC LLM' },
@@ -400,7 +400,7 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
                           b.id === 'gemini'
                             ? 'gemini-2.5-flash'
                             : b.id === 'groq'
-                            ? 'llama-3.3-70b-versatile'
+                            ? 'openai/gpt-oss-120b'
                             : b.id === 'openai'
                             ? 'gpt-4o-mini'
                             : b.id === 'openrouter'
@@ -435,7 +435,7 @@ export const VoiceBrainModal: React.FC<VoiceBrainModalProps> = ({
                 <div className="p-3.5 border border-red-500/35 bg-black/40 space-y-2.5">
                   {brainConfig.provider === 'groq' && !brainConfig.apiKey.trim() && (
                     <div className="p-2 border border-emerald-500/45 bg-emerald-950/30 font-mono-tech text-[11px] text-emerald-300">
-                      ✓ GROQ CLOUD KEY PRE-CONNECTED ON SERVER (llama-3.3-70b-versatile active).
+                      ✓ GROQ CLOUD KEY PRE-CONNECTED ON SERVER (openai/gpt-oss-120b + auto-discovery active).
                       Leave blank to use your connected server key, or paste another key below to override.
                     </div>
                   )}

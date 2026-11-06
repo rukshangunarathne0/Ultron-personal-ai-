@@ -186,12 +186,13 @@ export function parseRukAiModelResponse(rawOutput: string): {
   cleanAnswer: string;
   memoryUpdate: MemoryUpdatePayload;
 } {
-  let cleanAnswer = rawOutput;
+  // Strip any <think>...</think> reasoning blocks emitted by reasoning models (e.g. gpt-oss / qwen3)
+  let cleanAnswer = rawOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const memoryUpdate: MemoryUpdatePayload = { save: [], delete: [] };
 
-  const match = rawOutput.match(/<memory_update>([\s\S]*?)<\/memory_update>/i);
+  const match = cleanAnswer.match(/<memory_update>([\s\S]*?)<\/memory_update>/i);
   if (match) {
-    cleanAnswer = rawOutput.replace(/<memory_update>[\s\S]*?<\/memory_update>/gi, '').trim();
+    cleanAnswer = cleanAnswer.replace(/<memory_update>[\s\S]*?<\/memory_update>/gi, '').trim();
     const jsonCandidate = match[1]
       .trim()
       .replace(/^```json\s*/i, '')

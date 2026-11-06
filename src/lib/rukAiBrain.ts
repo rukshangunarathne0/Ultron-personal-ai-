@@ -456,7 +456,7 @@ async function callExternalLLM(
   }
 
   if (brain.provider === 'groq' && !brain.apiKey.trim()) {
-    const model = brain.model.trim() || 'llama-3.3-70b-versatile';
+    const model = brain.model.trim() || 'openai/gpt-oss-120b';
     const payload = JSON.stringify({
       systemPrompt,
       userPayload: xmlUserPayload,
@@ -497,32 +497,48 @@ async function callExternalLLM(
 
     const defaultModel =
       brain.provider === 'groq'
-        ? 'llama-3.3-70b-versatile'
+        ? 'openai/gpt-oss-120b'
         : brain.provider === 'openrouter'
-        ? 'meta-llama/llama-3.3-70b-instruct'
+        ? 'openai/gpt-oss-120b'
         : 'gpt-4o-mini';
 
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${brain.apiKey.trim()}`,
-      },
-      body: JSON.stringify({
-        model: brain.model.trim() || defaultModel,
-        temperature: 0.35,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: xmlUserPayload },
-        ],
-      }),
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`${brain.provider.toUpperCase()} API ${res.status}: ${errText.slice(0, 180)}`);
+    const requestedModel =
+      brain.provider === 'groq' &&
+      (brain.model.trim() === 'llama-3.3-70b-versatile' ||
+        brain.model.trim() === 'llama-3.1-8b-instant')
+        ? 'openai/gpt-oss-120b'
+        : brain.model.trim() || defaultModel;
+
+    const tryModels =
+      brain.provider === 'groq'
+        ? Array.from(new Set([requestedModel, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b']))
+        : [requestedModel];
+
+    let lastErr = '';
+    for (const candidateModel of tryModels) {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${brain.apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: candidateModel,
+          temperature: 0.35,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: xmlUserPayload },
+          ],
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content || '';
+      }
+      lastErr = `${brain.provider.toUpperCase()} API ${res.status}: ${(await res.text()).slice(0, 180)}`;
+      if (res.status === 401) break;
     }
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content || '';
+    throw new Error(lastErr);
   }
 
   if (brain.provider === 'ollama') {
