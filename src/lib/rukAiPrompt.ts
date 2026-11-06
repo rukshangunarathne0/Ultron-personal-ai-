@@ -81,14 +81,15 @@ STEP 4 - DO THE TASK
   * Exact DOM IDs on screen that your <ultron_code> CSS and JS can target directly:
     - #ultron-root  (attributes: data-ultron-theme="...", data-mobile-view="true|false", data-mobile-panel="stage|controls|details")
     - #ultron-grid  (main layout container holding left wing, center stage, right wing)
-    - #ultron-left-wing  (Details HUD: Memory Vault, 7-Step Circuit, Tasks)
-    - #ultron-center-stage  (Middle column holding #ultron-viewport-deck + #ultron-avatar-rig)
-    - #ultron-right-wing  (Right-Side "COMMAND DETAILS" HUD: #ultron-right-panel-header, #ultron-top-dock buttons, #ultron-chat-feed Command Details OR #ultron-right-search-details Google Search Details, and #ultron-text-dock input)
-    - #ultron-mobile-nav  (Bottom mobile navigation bar switching between ULTRON STAGE / COMMAND DETAILS / VAULT & TASKS)
-  * RIGHT-SIDE PANEL RULE ("COMMAND DETAILS" <-> "GOOGLE SEARCH DETAILS"):
-    - The right-side panel is named COMMAND DETAILS (rightPanelMode="command_details").
-    - Whenever Rukshan asks you to search from Google / web, the right-side panel automatically switches to GOOGLE SEARCH DETAILS (rightPanelMode="search_details") to display all search details, web links, images, and videos right on the right side.
-    - Whenever Rukshan asks you to "bring back the command details" (or restore/show Command Details on the right side), emit <ultron_action>{"ui":{"rightPanelMode":"command_details"}}</ultron_action> to put COMMAND DETAILS right back on the right side!
+    - #ultron-left-wing  (Left-Side "COMMAND DETAILS" panel: shows Memory Vault, 7-Step Circuit & Tasks by default, and switches to GOOGLE // INFO & SITES when Rukshan searches Google!)
+    - #ultron-center-stage  (Middle column holding #ultron-viewport-deck at TOP for PHOTOS & VIDS + #ultron-avatar-rig Compact Ultron below)
+    - #ultron-right-wing  (Right-Side "COMMAND PANEL": #ultron-right-panel-header, #ultron-top-dock buttons, #ultron-chat-feed reply box, and #ultron-text-dock text input)
+    - #ultron-mobile-nav  (Bottom mobile navigation bar switching between ULTRON & MEDIA / COMMAND PANEL / COMMAND DETAILS)
+  * PANEL LAYOUT RULE (LEFT = "COMMAND DETAILS" <-> "GOOGLE INFO & SITES", TOP = "PHOTOS & VIDS", RIGHT = "COMMAND PANEL"):
+    - Left-side panel is named COMMAND DETAILS (leftPanelMode="command_details").
+    - Right-side panel is named COMMAND PANEL (mic, voice feed, and text command box).
+    - Whenever Rukshan asks you to open/search Google, the LEFT side switches to GOOGLE // INFO & SITES (leftPanelMode="google_info") showing information & websites, while the TOP center deck shows PHOTOS & VIDS!
+    - Whenever Rukshan asks you to "bring back the command details" (or restore/show Command Details), emit <ultron_action>{"ui":{"leftPanelMode":"command_details"}}</ultron_action> to restore COMMAND DETAILS to the left side!
   * To customize Mobile View specifically:
     - Target BOTH @media (max-width: 768px) { ... } AND #ultron-root[data-mobile-view="true"] { ... } in liveCss so your mobile UI changes work on phones AND when previewing mobile view on desktop!
     - If Rukshan asks to "switch to mobile view" or "show me mobile view", set "ui": {"mobileViewMode": "force_mobile"} in <ultron_action> (or "auto" / "force_desktop").
@@ -309,7 +310,7 @@ github={authorized:${commsVault.github.authorized}}`
     uiConfig && voiceConfig
       ? `commandOnlyMode=${!uiConfig.autonomyEnabled}
 adultMode18Plus=${uiConfig.adultMode} (Operator Rukshan is 20 years old — SafeSearch=${uiConfig.adultMode ? 'OFF_UNRESTRICTED' : 'SAFE'})
-ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresence:"${uiConfig.avatarPresence}", mobileViewMode:"${uiConfig.mobileViewMode || 'auto'}", mobileActivePanel:"${uiConfig.mobileActivePanel || 'stage'}", rightPanelMode:"${uiConfig.rightPanelMode || 'command_details'}", hudDesignation:"${uiConfig.hudDesignation}"}
+ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresence:"${uiConfig.avatarPresence}", mobileViewMode:"${uiConfig.mobileViewMode || 'auto'}", mobileActivePanel:"${uiConfig.mobileActivePanel || 'stage'}", leftPanelMode:"${uiConfig.leftPanelMode || 'command_details'}", hudDesignation:"${uiConfig.hudDesignation}"}
 voice={provider:"${voiceConfig.provider}", groqVoice:"${voiceConfig.groqVoice}", pitch:${voiceConfig.pitch}, ultronShiftRate:${voiceConfig.ultronShiftRate}, subBassDb:${voiceConfig.subBassDb}, ringModHz:${voiceConfig.ringModHz}}
 mp3Vault=${mp3Info}
 comms=${commsInfo}
@@ -440,8 +441,8 @@ function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
       out.ui.mobileActivePanel = raw.ui.mobileActivePanel;
       hasChange = true;
     }
-    if (['command_details', 'search_details'].includes(raw.ui.rightPanelMode)) {
-      out.ui.rightPanelMode = raw.ui.rightPanelMode;
+    if (['command_details', 'google_info'].includes(raw.ui.leftPanelMode)) {
+      out.ui.leftPanelMode = raw.ui.leftPanelMode;
       hasChange = true;
     }
   }

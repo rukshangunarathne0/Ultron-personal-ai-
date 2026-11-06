@@ -48,7 +48,7 @@ import {
 const LOCAL_STORAGE_STATE_KEY = 'ruk_ai_ultron_state_v1';
 const LOCAL_STORAGE_VOICE_KEY = 'ruk_ai_voice_cfg_v2';
 const LOCAL_STORAGE_BRAIN_KEY = 'ruk_ai_brain_cfg_v4';
-const LOCAL_STORAGE_UI_KEY = 'ruk_ai_ultron_ui_v2';
+const LOCAL_STORAGE_UI_KEY = 'ruk_ai_ultron_ui_v3';
 const LOCAL_STORAGE_COMMS_KEY = 'ruk_ai_comms_vault_v1';
 
 const DEFAULT_UI_CONFIG: UltronUiConfig = {
@@ -57,7 +57,7 @@ const DEFAULT_UI_CONFIG: UltronUiConfig = {
   avatarPresence: 'compact',
   mobileViewMode: 'auto',
   mobileActivePanel: 'stage',
-  rightPanelMode: 'command_details',
+  leftPanelMode: 'command_details',
   hudDesignation: 'RUK-AI // ULTRON',
   statusBanner: 'OP: RUKSHAN // COMMAND CORE',
   bgOverdrive: 1.0,
@@ -204,6 +204,7 @@ export const App: React.FC = () => {
   const [isScreenDragOver, setIsScreenDragOver] = useState(false);
 
   const [activeSearchBundle, setActiveSearchBundle] = useState<SearchBundle | null>(null);
+  const [showTopMedia, setShowTopMedia] = useState<boolean>(true);
   const [activeCommsMessages, setActiveCommsMessages] = useState<UnseenCommsMessage[] | null>(null);
   const [codeState, setCodeState] = useState<PersistedCodeState>(() => loadPersistedCodeState());
   const [codeOutput, setCodeOutput] = useState<string | null>(null);
@@ -475,7 +476,7 @@ export const App: React.FC = () => {
           action.ui.theme ? `theme=${action.ui.theme}` : '',
           action.ui.layoutMode ? `layout=${action.ui.layoutMode}` : '',
           action.ui.avatarPresence ? `scale=${action.ui.avatarPresence}` : '',
-          action.ui.rightPanelMode ? `rightPanel=${action.ui.rightPanelMode}` : '',
+          action.ui.leftPanelMode ? `leftPanel=${action.ui.leftPanelMode}` : '',
           action.ui.hudDesignation ? `title="${action.ui.hudDesignation}"` : '',
         ]
           .filter(Boolean)
@@ -738,14 +739,14 @@ export const App: React.FC = () => {
         }
         if (result.searchBundle) {
           setActiveSearchBundle(result.searchBundle);
+          setShowTopMedia(true);
           setUiConfig((prev) => ({
             ...prev,
-            rightPanelMode: 'search_details',
-            mobileActivePanel: 'controls',
+            leftPanelMode: 'google_info',
           }));
           pushAutoLog(
             'search',
-            `Google Search "${result.searchBundle.query}" -> Right Panel (${result.searchBundle.web.length} web, ${result.searchBundle.images.length} imgs, ${result.searchBundle.videos.length} vids)`
+            `Google Search "${result.searchBundle.query}" -> Left Info (${result.searchBundle.web.length} sites) + Top Media (${result.searchBundle.images.length} photos, ${result.searchBundle.videos.length} vids)`
           );
         }
         if (result.commsMessages) {
@@ -1170,10 +1171,10 @@ export const App: React.FC = () => {
       search: async (query: string, mode: 'all' | 'web' | 'images' | 'videos' = 'all') => {
         const b = await runUltronWebSearch(query, mode, stateRefs.current.uiConfig.adultMode);
         setActiveSearchBundle(b);
+        setShowTopMedia(true);
         setUiConfig((prev) => ({
           ...prev,
-          rightPanelMode: 'search_details',
-          mobileActivePanel: 'controls',
+          leftPanelMode: 'google_info',
         }));
         return b;
       },
@@ -1203,6 +1204,8 @@ export const App: React.FC = () => {
     (uiConfig.mobileViewMode !== 'force_desktop' && isViewportNarrow);
   const activeMobileTab = uiConfig.mobileActivePanel || 'stage';
 
+  const latestAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant');
+
   const detailsWing = (
     <LeftDetailsHud
       memories={memories}
@@ -1217,6 +1220,14 @@ export const App: React.FC = () => {
       voiceConfig={voiceConfig}
       uiConfig={uiConfig}
       autonomousLog={autonomousLog}
+      leftPanelMode={uiConfig.leftPanelMode || 'command_details'}
+      onChangeLeftPanelMode={(mode) =>
+        setUiConfig((prev) => ({ ...prev, leftPanelMode: mode }))
+      }
+      searchBundle={activeSearchBundle}
+      latestAssistantReply={latestAssistantMsg?.content}
+      isProcessing={isProcessing}
+      onReplaySpeech={(txt) => speakReply(txt, 'speaking')}
       onToggleAdultMode={() =>
         setUiConfig((prev) => {
           const next = !prev.adultMode;
@@ -1266,11 +1277,6 @@ export const App: React.FC = () => {
       isProcessing={isProcessing}
       isSpeaking={isSpeaking}
       toastNotice={toastNotice}
-      rightPanelMode={uiConfig.rightPanelMode || 'command_details'}
-      onChangeRightPanelMode={(mode) =>
-        setUiConfig((prev) => ({ ...prev, rightPanelMode: mode }))
-      }
-      searchBundle={activeSearchBundle}
       onSendMessage={handleSendMessage}
       onReplayLastSpeech={(txt) => speakReply(txt, 'speaking')}
     />
@@ -1424,8 +1430,8 @@ export const App: React.FC = () => {
                 className="h-full min-h-0 flex flex-col justify-between overflow-hidden relative gap-1.5"
               >
                 <OmniViewportDeck
-                  searchBundle={null}
-                  onCloseSearch={() => setActiveSearchBundle(null)}
+                  searchBundle={showTopMedia ? activeSearchBundle : null}
+                  onCloseSearch={() => setShowTopMedia(false)}
                   commsMessages={activeCommsMessages}
                   onCloseComms={() => setActiveCommsMessages(null)}
                   onSendCommsReply={handleSendCommsReplyFromHud}
@@ -1506,9 +1512,9 @@ export const App: React.FC = () => {
             className="grid grid-cols-3 border-t border-white/20 bg-black/80 backdrop-blur-md font-mono-tech text-[10px] shrink-0"
           >
             {[
-              { id: 'stage', label: 'ULTRON STAGE' },
-              { id: 'controls', label: 'COMMAND DETAILS' },
-              { id: 'details', label: 'VAULT & TASKS' },
+              { id: 'stage', label: 'ULTRON & MEDIA' },
+              { id: 'controls', label: 'COMMAND PANEL' },
+              { id: 'details', label: 'COMMAND DETAILS' },
             ].map((tabItem) => (
               <button
                 key={tabItem.id}
@@ -1543,14 +1549,14 @@ export const App: React.FC = () => {
             {uiConfig.layoutMode === 'swapped_wings' ? controlsWing : detailsWing}
           </div>
 
-          {/* MIDDLE COLUMN: Omni-Viewport Deck (Unseen Comms / Live Widgets) + Compact Ultron */}
+          {/* MIDDLE COLUMN: Omni-Viewport Deck (Top Photos & Vids / Unseen Comms / Live Widgets) + Compact Ultron */}
           <div
             id="ultron-center-stage"
             className="h-full min-h-0 flex flex-col justify-between overflow-hidden relative"
           >
             <OmniViewportDeck
-              searchBundle={null}
-              onCloseSearch={() => setActiveSearchBundle(null)}
+              searchBundle={showTopMedia ? activeSearchBundle : null}
+              onCloseSearch={() => setShowTopMedia(false)}
               commsMessages={activeCommsMessages}
               onCloseComms={() => setActiveCommsMessages(null)}
               onSendCommsReply={handleSendCommsReplyFromHud}

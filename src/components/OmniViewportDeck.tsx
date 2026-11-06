@@ -6,7 +6,6 @@ import {
   EyeOff,
   ExternalLink,
   Film,
-  Globe,
   Image as ImageIcon,
   MessageCircle,
   Minimize2,
@@ -91,7 +90,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
   codeOutput,
   onCloseCodeOutput,
 }) => {
-  const [mediaTab, setMediaTab] = useState<'images' | 'videos' | 'web'>('images');
+  const [mediaTab, setMediaTab] = useState<'images' | 'videos'>('images');
   const [playingVideo, setPlayingVideo] = useState<VideoSearchItem | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImageSearchItem | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -112,8 +111,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
     setPlayingVideo(null);
     setSelectedImage(null);
     if (searchBundle.images.length > 0) setMediaTab('images');
-    else if (searchBundle.videos.length > 0) setMediaTab('videos');
-    else setMediaTab('web');
+    else setMediaTab('videos');
   }, [searchBundle]);
 
   const handleQuickReply = async (msg: UnseenCommsMessage) => {
@@ -129,8 +127,11 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
   };
 
   const deckWidgets = liveWidgets.filter((w) => !w.targetSelector);
+  const hasTopMedia =
+    Boolean(searchBundle) &&
+    ((searchBundle?.images.length || 0) > 0 || (searchBundle?.videos.length || 0) > 0);
   const hasAnything =
-    Boolean(searchBundle) ||
+    hasTopMedia ||
     Boolean(commsMessages) ||
     deckWidgets.length > 0 ||
     Boolean(codeOutput);
@@ -141,7 +142,9 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
     <div
       id="ultron-viewport-deck"
       className={`w-full flex flex-col gap-2 pointer-events-none z-30 ${
-        expanded ? 'fixed inset-4 z-50 bg-black/85 backdrop-blur-md p-4 pointer-events-auto overflow-y-auto ultron-scroll' : ''
+        expanded
+          ? 'fixed inset-4 z-50 bg-black/85 backdrop-blur-md p-4 pointer-events-auto overflow-y-auto ultron-scroll'
+          : ''
       }`}
     >
       {/* 1. SELF-CODED LIVE ULTRON HUD WIDGETS */}
@@ -181,7 +184,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
 
       {/* 3. UNSEEN WHATSAPP / TELEGRAM / GITHUB MESSAGES DECK */}
       {commsMessages && (
-        <div className="ultron-glass ultron-corners p-2.5 rounded-sm pointer-events-auto max-h-[42vh] flex flex-col">
+        <div className="ultron-glass ultron-corners p-2.5 rounded-sm pointer-events-auto max-h-[38vh] flex flex-col">
           <div className="flex items-center justify-between border-b border-white/20 pb-1.5 mb-2 font-mono-tech text-[10px]">
             <span className="flex items-center gap-1.5 text-emerald-300 font-bold">
               <MessageCircle className="w-3.5 h-3.5" />
@@ -266,14 +269,14 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
         </div>
       )}
 
-      {/* 4. GOOGLE / WEB SEARCH + IMAGES + PLAYABLE YOUTUBE VIDEOS DECK */}
-      {searchBundle && (
+      {/* 4. TOP MEDIA DECK: PHOTOS & VIDEOS ONLY (Information & Sites live on Left Panel!) */}
+      {hasTopMedia && searchBundle && (
         <div
-          className={`ultron-glass ultron-corners p-2.5 rounded-sm pointer-events-auto flex flex-col ${
-            expanded ? 'flex-1' : 'max-h-[44vh]'
+          className={`ultron-glass ultron-corners p-2 rounded-sm pointer-events-auto flex flex-col ${
+            expanded ? 'flex-1' : 'max-h-[36vh]'
           }`}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-white/20 pb-1.5 mb-2">
+          <div className="flex items-center justify-between gap-2 border-b border-white/20 pb-1.5 mb-1.5">
             <div className="flex items-center gap-1.5 font-mono-tech text-[10px]">
               <button
                 type="button"
@@ -281,11 +284,11 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                 className={`px-2 py-0.5 border flex items-center gap-1 cursor-pointer ${
                   mediaTab === 'images'
                     ? 'border-white/80 bg-white/20 text-white font-bold'
-                    : 'border-white/20 text-red-200/80'
+                    : 'border-white/20 text-red-200/80 hover:text-white'
                 }`}
               >
                 <ImageIcon className="w-3 h-3" />
-                IMGS ({searchBundle.images.length})
+                PHOTOS ({searchBundle.images.length})
               </button>
               <button
                 type="button"
@@ -293,23 +296,11 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                 className={`px-2 py-0.5 border flex items-center gap-1 cursor-pointer ${
                   mediaTab === 'videos'
                     ? 'border-white/80 bg-white/20 text-white font-bold'
-                    : 'border-white/20 text-red-200/80'
+                    : 'border-white/20 text-red-200/80 hover:text-white'
                 }`}
               >
                 <Film className="w-3 h-3" />
                 VIDS ({searchBundle.videos.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setMediaTab('web')}
-                className={`px-2 py-0.5 border flex items-center gap-1 cursor-pointer ${
-                  mediaTab === 'web'
-                    ? 'border-white/80 bg-white/20 text-white font-bold'
-                    : 'border-white/20 text-red-200/80'
-                }`}
-              >
-                <Globe className="w-3 h-3" />
-                WEB ({searchBundle.web.length})
               </button>
             </div>
 
@@ -342,6 +333,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
               <button
                 type="button"
                 onClick={onCloseSearch}
+                title="Hide top photos & videos bar"
                 className="p-1 border border-white/25 text-red-200 hover:text-white cursor-pointer"
               >
                 <X className="w-3 h-3" />
@@ -349,14 +341,14 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
             </div>
           </div>
 
-          {/* Lightbox Image Preview + Direct Links */}
+          {/* Lightbox Photo Preview + Direct Links */}
           {selectedImage && mediaTab === 'images' && (
             <div className="mb-2 relative bg-black/85 border border-white/35 p-2 flex flex-col items-center gap-1.5">
               <img
                 src={selectedImage.imageUrl || selectedImage.thumbnailUrl}
                 alt={selectedImage.title}
                 referrerPolicy="no-referrer"
-                className="max-h-56 object-contain"
+                className="max-h-48 object-contain"
               />
               <div className="w-full flex items-center justify-between gap-2 font-mono-tech text-[9.5px] border-t border-white/15 pt-1">
                 <span className="text-white/90 truncate">{selectedImage.title}</span>
@@ -367,7 +359,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                     className="text-emerald-300 hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
                     <Copy className="w-2.5 h-2.5" />
-                    {copiedKey === 'lightbox' ? 'COPIED' : 'COPY IMG'}
+                    {copiedKey === 'lightbox' ? 'COPIED' : 'COPY PHOTO'}
                   </button>
                   <a
                     href={selectedImage.imageUrl}
@@ -375,7 +367,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                     rel="noreferrer"
                     className="text-amber-300 hover:underline flex items-center gap-0.5"
                   >
-                    FULL IMG <ExternalLink className="w-2.5 h-2.5" />
+                    FULL PHOTO <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                   <a
                     href={selectedImage.sourceUrl}
@@ -383,7 +375,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                     rel="noreferrer"
                     className="text-cyan-300 hover:underline flex items-center gap-0.5"
                   >
-                    SOURCE <ExternalLink className="w-2.5 h-2.5" />
+                    SITE <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                 </div>
               </div>
@@ -399,7 +391,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
 
           {/* Inline Playable Video (MP4 or Embed Iframe) */}
           {playingVideo && mediaTab === 'videos' && (
-            <div className="mb-2 relative aspect-video w-full max-h-60 bg-black border border-white/35">
+            <div className="mb-2 relative aspect-video w-full max-h-52 bg-black border border-white/35">
               {playingVideo.directFileUrl ? (
                 <video
                   src={playingVideo.directFileUrl}
@@ -468,7 +460,7 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                         href={img.imageUrl || img.sourceUrl}
                         target="_blank"
                         rel="noreferrer"
-                        title="Open direct image link"
+                        title="Open direct photo link"
                         className="text-amber-300 hover:text-white shrink-0"
                       >
                         <ExternalLink className="w-2.5 h-2.5" />
@@ -559,38 +551,6 @@ export const OmniViewportDeck: React.FC<OmniViewportDeckProps> = ({
                     </div>
                   );
                 })}
-              </div>
-            )}
-
-            {mediaTab === 'web' && (
-              <div className="space-y-1.5">
-                {searchBundle.web.map((w, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2 border border-white/20 bg-black/50 hover:border-white/60 transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <a
-                        href={w.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs font-bold text-amber-200 hover:underline truncate flex items-center gap-1"
-                      >
-                        {w.title}
-                        <ExternalLink className="w-3 h-3 shrink-0" />
-                      </a>
-                      <span className="font-mono-tech text-[8.5px] px-1 border border-white/25 text-red-200 shrink-0">
-                        {w.source}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-white/90 leading-snug mt-0.5 line-clamp-2">
-                      {w.snippet}
-                    </p>
-                    <div className="font-mono-tech text-[9px] text-emerald-300/80 truncate mt-0.5">
-                      {w.url}
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </div>

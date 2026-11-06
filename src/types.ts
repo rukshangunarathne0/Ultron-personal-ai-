@@ -38,7 +38,7 @@ export type UltronLayoutMode = 'standard' | 'swapped_wings' | 'cinema_focus';
 export type UltronAvatarPresence = 'compact' | 'commanding' | 'recessed';
 export type UltronMobileViewMode = 'auto' | 'force_mobile' | 'force_desktop';
 export type UltronMobilePanel = 'stage' | 'controls' | 'details';
-export type UltronRightPanelMode = 'command_details' | 'search_details';
+export type UltronLeftPanelMode = 'command_details' | 'google_info';
 
 export interface UltronUiConfig {
   theme: UltronThemeId;
@@ -46,7 +46,7 @@ export interface UltronUiConfig {
   avatarPresence: UltronAvatarPresence;
   mobileViewMode: UltronMobileViewMode;
   mobileActivePanel: UltronMobilePanel;
-  rightPanelMode?: UltronRightPanelMode;
+  leftPanelMode?: UltronLeftPanelMode;
   hudDesignation: string;
   statusBanner: string;
   bgOverdrive: number;

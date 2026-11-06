@@ -762,16 +762,16 @@ function detectLocalSovereignOverride(userText: string): UltronActionPayload | u
     /\b(bring\s+back|get\s+.*?\s*back|put\s+.*?\s*back|return|restore|switch\s+(?:back\s+)?to|show|open|back\s+to)\b.*\b(command\s+details?)\b/.test(
       low
     ) ||
-    /\bcommand\s+details?\b.*\b(back|right\s+side|right\s+panel|restore|again)\b/.test(low)
+    /\bcommand\s+details?\b.*\b(back|left\s+side|left\s+panel|restore|again)\b/.test(low)
   ) {
-    action.ui = { ...action.ui, rightPanelMode: 'command_details', mobileActivePanel: 'controls' };
+    action.ui = { ...action.ui, leftPanelMode: 'command_details', mobileActivePanel: 'details' };
     changed = true;
   } else if (
-    /\b(show|open|bring\s+back|switch\s+to)\b.*\b(search\s+details?|google\s+details?|search\s+results?)\b/.test(
+    /\b(show|open|bring\s+back|switch\s+to)\b.*\b(search\s+details?|google\s+(?:info|details|sites)|search\s+results?)\b/.test(
       low
     )
   ) {
-    action.ui = { ...action.ui, rightPanelMode: 'search_details', mobileActivePanel: 'controls' };
+    action.ui = { ...action.ui, leftPanelMode: 'google_info', mobileActivePanel: 'details' };
     changed = true;
   }
 
@@ -791,7 +791,7 @@ export function didUserCommandUiOrCode(userText: string): {
   const low = userText.toLowerCase();
 
   const allowUiMutation =
-    /\b(ui|hud|theme|color|colour|layout|panel|wing|mobile|phone|desktop|screen|view|command\s+details?|search\s+details?|bring\s+back|get\s+it\s+back|right\s+side|style|css|font|border|background|button|nav|bar|header|footer|compact|bigger|smaller|hide|show|move|swap|flip|reset|redesign|customize|change|modify|update|make\s+(?:it|the|your)|18\+|safesearch|adult)\b/.test(
+    /\b(ui|hud|theme|color|colour|layout|panel|wing|mobile|phone|desktop|screen|view|command\s+details?|command\s+panel|search\s+details?|bring\s+back|get\s+it\s+back|left\s+side|right\s+side|style|css|font|border|background|button|nav|bar|header|footer|compact|bigger|smaller|hide|show|move|swap|flip|reset|redesign|customize|change|modify|update|make\s+(?:it|the|your)|18\+|safesearch|adult)\b/.test(
       low
     );
 
@@ -817,7 +817,7 @@ const STRICT_ILLEGAL_CHECK_RE =
 
 function synthesizeDirectMediaAnswer(bundle: SearchBundle): string {
   const lines: string[] = [
-    `Google search complete for "${bundle.query}", Rukshan — displaying ${bundle.web.length} web results, ${bundle.images.length} images, and ${bundle.videos.length} videos in your right-side panel.`,
+    `Google search complete for "${bundle.query}", Rukshan — displaying ${bundle.web.length} sites & info on your left side, and ${bundle.images.length} photos & ${bundle.videos.length} videos at the top.`,
   ];
 
   if (bundle.web.length > 0) {
@@ -1108,31 +1108,33 @@ export async function processRukAiTurn(params: {
   }
 
   // =========================================================================
-  // RIGHT-SIDE PANEL SWITCHING: "COMMAND DETAILS" <-> "GOOGLE SEARCH DETAILS"
+  // LEFT-SIDE PANEL SWITCHING: "COMMAND DETAILS" <-> "GOOGLE INFO & SITES"
   // =========================================================================
   const hasNewGoogleSearchCommand =
-    /\b(search(?:\s+from|\s+on|\s+in)?\s+google|google\s+search|search\s+for)\b/i.test(lower);
+    /\b(open\s+google|search(?:\s+from|\s+on|\s+in)?\s+google|google\s+search|search\s+for)\b/i.test(
+      lower
+    );
 
   const wantsRestoreCommandDetails =
     !hasNewGoogleSearchCommand &&
     (/\b(bring\s+back|get\s+(?:the\s+)?.*?\s*back|put\s+(?:the\s+)?.*?\s*back|return|restore|switch\s+(?:back\s+)?to|show|open|back\s+to)\b.*\b(command\s+details?)\b/i.test(
       lower
     ) ||
-      /\bcommand\s+details?\b.*\b(back|right\s+side|right\s+panel|restore|again)\b/i.test(lower) ||
-      (uiConfig?.rightPanelMode === 'search_details' &&
-        /\b(bring\s+it\s+back|get\s+it\s+back(?:\s+to\s+(?:the\s+)?right\s+side)?|close\s+(?:the\s+)?search|hide\s+(?:the\s+)?search)\b/i.test(
+      /\bcommand\s+details?\b.*\b(back|left\s+side|left\s+panel|restore|again)\b/i.test(lower) ||
+      (uiConfig?.leftPanelMode === 'google_info' &&
+        /\b(bring\s+it\s+back|get\s+it\s+back(?:\s+to\s+(?:the\s+)?left\s+side)?|close\s+(?:the\s+)?(?:google|search)|hide\s+(?:the\s+)?search)\b/i.test(
           lower
         )));
 
   if (wantsRestoreCommandDetails) {
     onStepChange?.(7);
-    const ans = 'Command Details are back on your right-side panel, Rukshan.';
+    const ans = 'Command Details are back on your left-side panel, Rukshan.';
     const action: UltronActionPayload = {
       ui: {
-        rightPanelMode: 'command_details',
-        mobileActivePanel: 'controls',
+        leftPanelMode: 'command_details',
+        mobileActivePanel: 'details',
       },
-      reason: 'Restored Command Details to right-side panel',
+      reason: 'Restored Command Details to left-side panel',
     };
     return {
       answer: ans,
