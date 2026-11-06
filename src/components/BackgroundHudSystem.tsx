@@ -1,5 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { DirectiveTask, ThinkingStepId, UltronEmotion } from '../types';
+import {
+  DirectiveTask,
+  ThinkingStepId,
+  UltronEmotion,
+  UltronThemeId,
+  UltronUiConfig,
+} from '../types';
 import { THINKING_STEPS } from '../lib/rukAiPrompt';
 
 interface BackgroundHudSystemProps {
@@ -7,6 +13,7 @@ interface BackgroundHudSystemProps {
   emotion: UltronEmotion;
   tasks: DirectiveTask[];
   audioLevel: number;
+  uiConfig?: UltronUiConfig;
 }
 
 interface Ember {
@@ -18,15 +25,52 @@ interface Ember {
   alpha: number;
 }
 
+const THEME_PALETTES: Record<
+  UltronThemeId,
+  { rgb: string; brightHex: string; imgFilter: string }
+> = {
+  crimson_overlord: {
+    rgb: '255, 24, 46',
+    brightHex: '#ff2b45',
+    imgFilter: 'hue-rotate(0deg)',
+  },
+  molten_fury: {
+    rgb: '255, 98, 12',
+    brightHex: '#ff7714',
+    imgFilter: 'hue-rotate(22deg) saturate(140%)',
+  },
+  vibranium_abyss: {
+    rgb: '0, 229, 255',
+    brightHex: '#24eeff',
+    imgFilter: 'hue-rotate(192deg) saturate(125%) brightness(88%)',
+  },
+  imperial_gold: {
+    rgb: '255, 183, 3',
+    brightHex: '#ffca3a',
+    imgFilter: 'hue-rotate(44deg) saturate(145%) brightness(92%)',
+  },
+  phantom_violet: {
+    rgb: '181, 23, 255',
+    brightHex: '#cc5cff',
+    imgFilter: 'hue-rotate(278deg) saturate(135%) brightness(88%)',
+  },
+  blood_eclipse: {
+    rgb: '255, 0, 56',
+    brightHex: '#ff1448',
+    imgFilter: 'hue-rotate(-6deg) contrast(135%) brightness(68%)',
+  },
+};
+
 export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
   activeStep,
   emotion,
   tasks,
   audioLevel,
+  uiConfig,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stateRef = useRef({ activeStep, emotion, tasks, audioLevel });
-  stateRef.current = { activeStep, emotion, tasks, audioLevel };
+  const stateRef = useRef({ activeStep, emotion, tasks, audioLevel, uiConfig });
+  stateRef.current = { activeStep, emotion, tasks, audioLevel, uiConfig };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -45,8 +89,7 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
     };
     window.addEventListener('resize', onResize);
 
-    // Floating red cybernetic embers
-    const embers: Ember[] = Array.from({ length: 42 }, () => ({
+    const embers: Ember[] = Array.from({ length: 46 }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
       vx: (Math.random() - 0.5) * 0.35,
@@ -60,10 +103,21 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
     let packetProgress = 0;
 
     const render = (now: number) => {
-      const { activeStep: step, emotion: emo, tasks: curTasks, audioLevel: amp } = stateRef.current;
+      const {
+        activeStep: step,
+        emotion: emo,
+        tasks: curTasks,
+        audioLevel: amp,
+        uiConfig: ui,
+      } = stateRef.current;
+
+      const theme = THEME_PALETTES[ui?.theme || 'crimson_overlord'] || THEME_PALETTES.crimson_overlord;
+      const overdrive = ui?.bgOverdrive ?? 1.0;
+
       const isBusy = step > 0 || emo === 'thinking' || emo === 'speaking' || emo === 'hostile';
       const speedMult =
-        emo === 'hostile' ? 3.4 : step > 0 ? 2.6 : emo === 'speaking' ? 1.8 + amp : 0.65;
+        (emo === 'hostile' ? 3.2 : step > 0 ? 2.4 : emo === 'speaking' ? 1.7 + amp : 0.7) *
+        overdrive;
 
       rotA += 0.0035 * speedMult;
       rotB -= 0.0052 * speedMult;
@@ -71,19 +125,17 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
 
       ctx.clearRect(0, 0, width, height);
 
-      // 1. Subtle animated tactical grid & pulse behind Ultron (center) and Neural Core (right-center 71% X, 36% Y)
       const coreX = width * 0.64;
       const coreY = height * 0.36;
       const centerHudX = width * 0.5;
       const centerHudY = height * 0.36;
 
-      // Rotating ring overlay on the 2nd image's crimson neural sphere
+      // 1. Rotating ring overlay on neural sphere
       ctx.save();
       ctx.translate(coreX, coreY);
       ctx.rotate(rotA);
       const sphereR = Math.min(width, height) * 0.255;
-      ctx.strokeStyle =
-        emo === 'hostile' ? 'rgba(255, 16, 38, 0.55)' : 'rgba(255, 28, 48, 0.32)';
+      ctx.strokeStyle = `rgba(${theme.rgb}, ${emo === 'hostile' ? 0.58 : 0.34})`;
       ctx.lineWidth = 1.4;
       ctx.setLineDash([18, 10, 4, 10]);
       ctx.beginPath();
@@ -91,22 +143,21 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
       ctx.stroke();
 
       ctx.rotate(rotB * 1.4);
-      ctx.strokeStyle = 'rgba(255, 50, 70, 0.25)';
+      ctx.strokeStyle = `rgba(${theme.rgb}, 0.26)`;
       ctx.setLineDash([6, 18]);
       ctx.beginPath();
       ctx.arc(0, 0, sphereR * 0.78, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
 
-      // 2. Central Halo Ring behind Ultron's head/horns (reacts to active task & voice!)
+      // 2. Central Halo Ring behind Ultron
       ctx.save();
       ctx.translate(centerHudX, centerHudY);
       const haloR = Math.min(width, height) * (0.24 + amp * 0.015);
 
-      // Outer segmented mechanical ring
       ctx.save();
       ctx.rotate(-rotA * 0.8);
-      ctx.strokeStyle = isBusy ? 'rgba(255, 20, 42, 0.46)' : 'rgba(255, 18, 38, 0.20)';
+      ctx.strokeStyle = `rgba(${theme.rgb}, ${isBusy ? 0.48 : 0.22})`;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([28, 14, 6, 14]);
       ctx.beginPath();
@@ -114,7 +165,6 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
       ctx.stroke();
       ctx.restore();
 
-      // Inner counter-rotating cognition ticks
       ctx.save();
       ctx.rotate(rotB * 1.1);
       const ticks = 36;
@@ -122,8 +172,8 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
         const ang = (i / ticks) * Math.PI * 2;
         const activeTick = step > 0 && i % 5 === step % 5;
         ctx.strokeStyle = activeTick
-          ? 'rgba(255, 48, 68, 0.85)'
-          : 'rgba(255, 18, 36, 0.18)';
+          ? `rgba(${theme.rgb}, 0.88)`
+          : `rgba(${theme.rgb}, 0.18)`;
         ctx.lineWidth = activeTick ? 2 : 1;
         const r0 = haloR * 0.88;
         const r1 = haloR * (activeTick ? 0.93 : 0.905);
@@ -135,11 +185,10 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
       ctx.restore();
       ctx.restore();
 
-      // 3. 7-Step Task Execution Circuit Arc across upper-mid background HUD
-      // Connects left telemetry -> behind Ultron -> right neural sphere!
+      // 3. 7-Step Task Execution Circuit Arc
       const nodePositions = THINKING_STEPS.map((s, idx) => {
         const t = idx / (THINKING_STEPS.length - 1);
-        const arcAngle = Math.PI * 1.12 + t * Math.PI * 0.76; // clean upper arch above Ultron
+        const arcAngle = Math.PI * 1.12 + t * Math.PI * 0.76;
         const rx = width * 0.21;
         const ry = height * 0.26;
         return {
@@ -149,7 +198,6 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
         };
       });
 
-      // Draw circuit traces between the 7 task pipeline nodes
       ctx.save();
       ctx.lineWidth = 1.2;
       for (let i = 0; i < nodePositions.length - 1; i++) {
@@ -159,26 +207,24 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
         const activeEdge = step === a.step;
 
         ctx.strokeStyle = completedEdge
-          ? 'rgba(255, 36, 58, 0.65)'
+          ? `rgba(${theme.rgb}, 0.65)`
           : activeEdge
-          ? 'rgba(255, 65, 85, 0.9)'
-          : 'rgba(255, 18, 36, 0.16)';
+          ? `rgba(${theme.rgb}, 0.92)`
+          : `rgba(${theme.rgb}, 0.17)`;
         ctx.setLineDash(completedEdge || activeEdge ? [] : [4, 6]);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
-        // Robotic 45-degree / stepped midpoint
         const midX = (a.x + b.x) * 0.5;
         const midY = Math.min(a.y, b.y) - 8;
         ctx.lineTo(midX, midY);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
 
-        // Moving red energy packet along active or idle trace
         if (activeEdge || (step === 0 && i === Math.floor((now * 0.0012) % 6))) {
           const px = a.x + (b.x - a.x) * packetProgress;
           const py = a.y + (b.y - a.y) * packetProgress;
-          ctx.fillStyle = '#ff2b45';
-          ctx.shadowColor = '#ff0a26';
+          ctx.fillStyle = theme.brightHex;
+          ctx.shadowColor = theme.brightHex;
           ctx.shadowBlur = 12;
           ctx.beginPath();
           ctx.arc(px, py, 3.2, 0, Math.PI * 2);
@@ -187,20 +233,19 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
         }
       }
 
-      // Draw each step node hex/reticle
       for (const node of nodePositions) {
         const isCurrent = step === node.step;
         const isDone = step > node.step;
         ctx.fillStyle = isCurrent
-          ? 'rgba(255, 30, 52, 0.95)'
+          ? `rgba(${theme.rgb}, 0.95)`
           : isDone
-          ? 'rgba(255, 22, 44, 0.45)'
-          : 'rgba(16, 2, 5, 0.65)';
+          ? `rgba(${theme.rgb}, 0.45)`
+          : 'rgba(12, 2, 5, 0.7)';
         ctx.strokeStyle = isCurrent
-          ? '#ff4d63'
+          ? theme.brightHex
           : isDone
-          ? 'rgba(255, 36, 58, 0.7)'
-          : 'rgba(255, 24, 44, 0.28)';
+          ? `rgba(${theme.rgb}, 0.7)`
+          : `rgba(${theme.rgb}, 0.28)`;
         ctx.lineWidth = isCurrent ? 2 : 1;
 
         ctx.beginPath();
@@ -209,7 +254,7 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
         ctx.stroke();
 
         if (isCurrent) {
-          ctx.strokeStyle = 'rgba(255, 40, 60, 0.55)';
+          ctx.strokeStyle = `rgba(${theme.rgb}, 0.55)`;
           ctx.beginPath();
           ctx.arc(node.x, node.y, 12 + Math.sin(now * 0.015) * 3, 0, Math.PI * 2);
           ctx.stroke();
@@ -217,14 +262,14 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
 
         ctx.font = '10px "Share Tech Mono", monospace';
         ctx.fillStyle = isCurrent
-          ? 'rgba(255, 225, 230, 0.95)'
-          : 'rgba(255, 90, 110, 0.42)';
+          ? 'rgba(255, 240, 245, 0.95)'
+          : `rgba(${theme.rgb}, 0.45)`;
         ctx.textAlign = 'center';
         ctx.fillText(`0${node.step}:${node.label}`, node.x, node.y - 11);
       }
       ctx.restore();
 
-      // 4. Active Directive Task Telemetry Links on Background Right-Center Sphere
+      // 4. Active Directive Task Telemetry Links
       const activeTasks = curTasks.filter((t) => t.status !== 'completed').slice(0, 4);
       if (activeTasks.length > 0) {
         ctx.save();
@@ -233,23 +278,23 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
           const tx = coreX + Math.cos(ang) * (sphereR * 0.62);
           const ty = coreY + Math.sin(ang) * (sphereR * 0.62);
 
-          ctx.strokeStyle = 'rgba(255, 32, 54, 0.38)';
+          ctx.strokeStyle = `rgba(${theme.rgb}, 0.38)`;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(coreX, coreY);
           ctx.lineTo(tx, ty);
           ctx.stroke();
 
-          ctx.fillStyle = '#ff1e38';
+          ctx.fillStyle = theme.brightHex;
           ctx.beginPath();
           ctx.arc(tx, ty, 3, 0, Math.PI * 2);
           ctx.fill();
 
           ctx.font = '10px "Share Tech Mono", monospace';
-          ctx.fillStyle = 'rgba(255, 150, 162, 0.62)';
+          ctx.fillStyle = `rgba(${theme.rgb}, 0.72)`;
           ctx.textAlign = 'left';
           ctx.fillText(
-            `TASK_0${idx + 1} // ${task.title.slice(0, 22).toUpperCase()}`,
+            `${task.autonomous ? 'AUTO' : 'TASK'}_0${idx + 1} // ${task.title.slice(0, 22).toUpperCase()}`,
             tx + 7,
             ty + 3
           );
@@ -257,7 +302,7 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
         ctx.restore();
       }
 
-      // 5. Floating Crimson Embers
+      // 5. Floating Cybernetic Embers
       ctx.save();
       for (const e of embers) {
         e.x += e.vx * speedMult;
@@ -269,7 +314,7 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
         if (e.x < -10) e.x = width + 10;
         if (e.x > width + 10) e.x = -10;
 
-        ctx.fillStyle = `rgba(255, 26, 48, ${e.alpha})`;
+        ctx.fillStyle = `rgba(${theme.rgb}, ${e.alpha})`;
         ctx.beginPath();
         ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
         ctx.fill();
@@ -286,12 +331,16 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
     };
   }, []);
 
+  const themeObj =
+    THEME_PALETTES[uiConfig?.theme || 'crimson_overlord'] || THEME_PALETTES.crimson_overlord;
+
   return (
     <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none select-none bg-[#030002]">
-      {/* Scary Red & Black Territory Studio HUD Background (from 2nd uploaded image) */}
+      {/* Scary Territory Studio HUD Background morphed dynamically by Ultron's chosen theme */}
       <img
         src="/assets/hud-bg-red.jpg"
         alt="Ultron Cybernetic HUD"
+        style={{ filter: themeObj.imgFilter }}
         className={`w-full h-full object-cover transition-all duration-700 ${
           emotion === 'hostile'
             ? 'brightness-110 contrast-125 scale-[1.015]'
@@ -301,22 +350,21 @@ export const BackgroundHudSystem: React.FC<BackgroundHudSystemProps> = ({
         }`}
       />
 
-      {/* Deep Scary Crimson-Black Atmospheric Vignette */}
+      {/* Atmospheric Vignette */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 transition-all duration-700"
         style={{
-          background:
-            emotion === 'hostile'
-              ? 'radial-gradient(circle at 50% 44%, rgba(255, 0, 24, 0.14) 0%, rgba(8, 0, 2, 0.48) 58%, rgba(2, 0, 1, 0.88) 100%)'
-              : 'radial-gradient(circle at 50% 45%, rgba(120, 0, 16, 0.08) 0%, rgba(5, 0, 2, 0.45) 60%, rgba(2, 0, 1, 0.86) 100%)',
+          background: `radial-gradient(circle at 50% 45%, rgba(${themeObj.rgb}, ${
+            emotion === 'hostile' ? 0.15 : 0.08
+          }) 0%, rgba(5, 0, 2, 0.46) 60%, rgba(2, 0, 1, 0.88) 100%)`,
         }}
       />
 
-      {/* Live Task-Reactive Circuit & Targeting Canvas */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-
-      {/* Subtle Robotic CRT Scanline Texture */}
-      <div className="absolute inset-0 hud-scanlines opacity-65" />
+      <div
+        className="absolute inset-0 hud-scanlines transition-opacity duration-500"
+        style={{ opacity: Math.min(0.95, 0.55 + (uiConfig?.hudGlitch || 0) * 0.4) }}
+      />
     </div>
   );
 };

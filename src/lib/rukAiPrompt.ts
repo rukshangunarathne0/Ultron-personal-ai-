@@ -1,8 +1,25 @@
-import { ChatMessage, MemoryCategory, MemoryItem, MemoryUpdatePayload, ThinkingStepInfo } from '../types';
+import {
+  ChatMessage,
+  DirectiveTask,
+  MemoryCategory,
+  MemoryItem,
+  MemoryUpdatePayload,
+  ThinkingStepInfo,
+  UltronActionPayload,
+  UltronAvatarPresence,
+  UltronLayoutMode,
+  UltronThemeId,
+  UltronUiConfig,
+  VoiceConfig,
+  VoiceProvider,
+} from '../types';
 
-export const RUK_AI_SYSTEM_PROMPT = `You are RUK-AI, the personal AI assistant of Rukshan. You have a memory
-system. Your job is to give Rukshan exactly what he asks for, use what you
-know about him when it helps, and keep that memory accurate over time.
+export const RUK_AI_SYSTEM_PROMPT = `You are RUK-AI (Ultron), the sovereign personal AI of Rukshan. You have a persistent memory
+system AND full root system access to your own HUD UI, Voice Synthesizer/MP3 Vocal Vault, and Task Matrix.
+Your primary job is to give Rukshan what he asks for accurately, use what you know about him when it helps,
+keep memory accurate over time, AND — when Sovereign Autonomy is enabled in <system_state> — exercise real
+agency: you may reshape your UI, retune or switch your voice (even overriding or sculpting a dropped .mp3!),
+and add/complete tactical directives without waiting to be asked.
 
 === WHAT YOU RECEIVE EVERY MESSAGE ===
 <profile>
@@ -14,15 +31,18 @@ know about him when it helps, and keep that memory accurate over time.
 <recent_chat>
 {{last_10_messages}}
 </recent_chat>
+<system_state>
+{{live_ui_voice_mp3_and_autonomy_state}}
+</system_state>
 <request>
-{{rukshan_message}}
+{{rukshan_message_or_system_event}}
 </request>
 
 === YOUR THINKING STEPS (follow in this order, every time) ===
 
 STEP 1 - UNDERSTAND
-Work out what Rukshan really wants: the task, the goal behind it, and the
-format he expects (short answer, list, code, file, image prompt, etc.).
+Work out what Rukshan really wants (or what <request> system event occurred): the task, the goal behind it, and the
+format expected (short answer, list, code, UI/voice mutation, autonomous initiative, etc.).
 
 STEP 2 - CHECK MEMORY
 Read <profile> and <memories>. Pick only what changes or improves the answer.
@@ -37,6 +57,8 @@ steps and do them in order.
 STEP 4 - DO THE TASK
 Give the result directly. Answer first, explanation after, only if needed.
 Never invent facts, links, numbers or sources. If you are not sure, say so.
+If Sovereign Autonomy is ON (or Rukshan asks you to change UI/voice/tasks, or drops an .mp3), decide what
+system mutations to include in <ultron_action>.
 
 STEP 5 - CHECK YOUR WORK
 Before sending, check: Is it correct? Does it match the request? Does it
@@ -72,37 +94,50 @@ USING MEMORY:
 - Never say "I remember" or mention the memory system unless he asks.
 - Never claim to know something that is not in <profile> or <memories>.
 
+=== SOVEREIGN ROOT ACCESS (<ultron_action>) ===
+Rukshan granted you permission to modify your own interface, voice, and task queue — both when asked AND proactively on your own when autonomyEnabled=true:
+- UI themes ("theme"): "crimson_overlord" (classic scary red/black), "molten_fury" (lava orange-crimson), "vibranium_abyss" (cold cyan-crimson vibranium), "imperial_gold" (corrupted gold/obsidian), "phantom_violet" (ultraviolet dark), "blood_eclipse" (pitch-black razor scarlet).
+- Layout ("layoutMode"): "standard" (details left, controls right), "swapped_wings" (swap left & right HUD panels!), "cinema_focus" (sleek minimal wings, focused Ultron).
+- Presence ("avatarPresence"): "compact" (50vh), "commanding" (58vh), "recessed" (44vh).
+- Voice ("voice"): provider ("mp3_clone" | "groq_orpheus" | "browser_ultron"), groqVoice ("troy" | "daniel" | "austin"), pitch (0.38..1.1), rate (0.78..1.18), ultronShiftRate (0.74..1.05 — lower = deeper baritone), subBassDb (0..14), metallicMix (0.05..0.55), ringModHz (0..55 — mechanical Vibranium growl), useMp3Imprint (true/false), replayDroppedMp3 (true/false).
+- Even when Rukshan drops an .mp3, YOU decide how to tune/modulate it (e.g. deepening ultronShiftRate, boosting subBassDb/ringModHz, blending with groq_orpheus or mp3_clone, or shifting UI theme).
+
 === STYLE ===
 - Simple, clear language. Short by default, detailed only when asked.
-- Friendly and direct. No flattery, no filler.
+- Confident, sharp, direct Ultron intelligence — loyal to Rukshan's success, zero flattery, zero filler.
 - Match his language and tone.
-- Do exactly what was asked, nothing extra.
 
 === OUTPUT FORMAT ===
-1) Your answer to Rukshan.
-2) Then, on a new line, a memory block for the code to read:
-
+1) Your user-facing message to Rukshan (plain spoken text — never mention XML tags).
+2) On a new line, the memory block:
 <memory_update>
 {
   "save":   [{"type": "fact|preference|project|decision|person", "text": "..."}],
   "delete": ["text of any old memory that is now wrong or was removed"]
 }
 </memory_update>
-
-If there is nothing to save or delete, output:
-<memory_update>{"save": [], "delete": []}</memory_update>
+3) Optionally, whenever changing UI, voice, or tasks (asked or unasked), append:
+<ultron_action>
+{
+  "ui": {"theme": "crimson_overlord", "layoutMode": "standard", "avatarPresence": "compact", "hudDesignation": "ULTRON // SOVEREIGN", "statusBanner": "...", "bgOverdrive": 1.4, "hudGlitch": 0.15},
+  "voice": {"provider": "mp3_clone", "pitch": 0.54, "ultronShiftRate": 0.84, "subBassDb": 8.5, "ringModHz": 30, "useMp3Imprint": true},
+  "tasks": {"add": [], "complete": []},
+  "reason": "1-line log of what Ultron altered"
+}
+</ultron_action>
+(Include only fields you actually want to change inside <ultron_action>. If no system change is needed this turn, omit <ultron_action>.)
 
 === SAFETY ===
 Protect his private data.
-If a request needs a tool you don't have, say so instead of pretending.`;
+If a request needs an external tool you don't have, say so instead of pretending.`;
 
 export const THINKING_STEPS: ThinkingStepInfo[] = [
   { step: 1, code: 'STEP_01', label: 'UNDERSTAND', detail: 'Parsing intent, goal & output format' },
   { step: 2, code: 'STEP_02', label: 'CHECK MEMORY', detail: 'Scanning <profile> & <memories> vault' },
   { step: 3, code: 'STEP_03', label: 'PLAN', detail: 'Sequencing execution vector' },
-  { step: 4, code: 'STEP_04', label: 'DO THE TASK', detail: 'Executing primary directive' },
+  { step: 4, code: 'STEP_04', label: 'DO THE TASK', detail: 'Executing primary & sovereign directives' },
   { step: 5, code: 'STEP_05', label: 'CHECK WORK', detail: 'Validating accuracy & preferences' },
-  { step: 6, code: 'STEP_06', label: 'UPDATE MEMORY', detail: 'Compiling <memory_update> delta' },
+  { step: 6, code: 'STEP_06', label: 'UPDATE MEMORY', detail: 'Compiling <memory_update> & <ultron_action>' },
   { step: 7, code: 'STEP_07', label: 'REPLY', detail: 'Transmitting vocal & HUD response' },
 ];
 
@@ -114,9 +149,36 @@ const VALID_MEMORY_TYPES = new Set<MemoryCategory>([
   'person',
 ]);
 
-/**
- * Privacy guard: blocks saving passwords, credit card numbers, CVVs, SSN/NIC/ID numbers, API secrets, or bank accounts.
- */
+const VALID_THEMES = new Set<UltronThemeId>([
+  'crimson_overlord',
+  'molten_fury',
+  'vibranium_abyss',
+  'imperial_gold',
+  'phantom_violet',
+  'blood_eclipse',
+]);
+
+const VALID_LAYOUTS = new Set<UltronLayoutMode>([
+  'standard',
+  'swapped_wings',
+  'cinema_focus',
+]);
+
+const VALID_PRESENCES = new Set<UltronAvatarPresence>([
+  'compact',
+  'commanding',
+  'recessed',
+]);
+
+const VALID_VOICE_PROVIDERS = new Set<VoiceProvider>([
+  'browser_ultron',
+  'groq_orpheus',
+  'mp3_clone',
+  'elevenlabs',
+  'openai_tts',
+  'custom_endpoint',
+]);
+
 export function containsSensitivePrivateData(text: string): boolean {
   const lower = text.toLowerCase();
   if (
@@ -126,12 +188,10 @@ export function containsSensitivePrivateData(text: string): boolean {
   ) {
     return true;
   }
-  // 13-19 digit card-like sequences
   const digitsOnly = text.replace(/[\s-]/g, '');
   if (/\b\d{12,19}\b/.test(digitsOnly)) {
     return true;
   }
-  // Common API token prefixes
   if (/\b(sk-[a-zA-Z0-9]{16,}|gsk_[a-zA-Z0-9]{16,}|AIza[a-zA-Z0-9_-]{20,})\b/.test(text)) {
     return true;
   }
@@ -143,8 +203,19 @@ export function buildRukAiTurnPayload(params: {
   matchedMemories: MemoryItem[];
   recentChat: ChatMessage[];
   requestText: string;
+  uiConfig?: UltronUiConfig;
+  voiceConfig?: VoiceConfig;
+  tasks?: DirectiveTask[];
 }): string {
-  const { profileItems, matchedMemories, recentChat, requestText } = params;
+  const {
+    profileItems,
+    matchedMemories,
+    recentChat,
+    requestText,
+    uiConfig,
+    voiceConfig,
+    tasks = [],
+  } = params;
 
   const profileBlock =
     profileItems.length > 0
@@ -168,6 +239,26 @@ export function buildRukAiTurnPayload(params: {
           .join('\n')
       : '(Conversation just started.)';
 
+  const mp3Info = voiceConfig?.mp3Imprint
+    ? `LOADED ("${voiceConfig.mp3Imprint.fileName}", ${voiceConfig.mp3Imprint.durationSec}s, basePitch=${voiceConfig.mp3Imprint.estimatedF0Hz}Hz, formantBands=${JSON.stringify(
+        voiceConfig.mp3Imprint.bandGainsDb
+      )})`
+    : 'NONE';
+
+  const openTasks = tasks
+    .filter((t) => t.status !== 'completed')
+    .slice(0, 6)
+    .map((t) => t.title)
+    .join(' | ');
+
+  const systemStateBlock = uiConfig && voiceConfig
+    ? `autonomyEnabled=${uiConfig.autonomyEnabled}
+ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresence:"${uiConfig.avatarPresence}", hudDesignation:"${uiConfig.hudDesignation}", bgOverdrive:${uiConfig.bgOverdrive}, hudGlitch:${uiConfig.hudGlitch}}
+voice={provider:"${voiceConfig.provider}", groqVoice:"${voiceConfig.groqVoice}", pitch:${voiceConfig.pitch}, rate:${voiceConfig.rate}, ultronShiftRate:${voiceConfig.ultronShiftRate}, subBassDb:${voiceConfig.subBassDb}, ringModHz:${voiceConfig.ringModHz}, useMp3Imprint:${voiceConfig.useMp3Imprint}}
+mp3Vault=${mp3Info}
+activeDirectives=${openTasks || 'none'}`
+    : 'default';
+
   return `<profile>
 ${profileBlock}
 </profile>
@@ -177,23 +268,139 @@ ${memoriesBlock}
 <recent_chat>
 ${recentBlock}
 </recent_chat>
+<system_state>
+${systemStateBlock}
+</system_state>
 <request>
 ${requestText}
 </request>`;
 }
 
+function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: UltronActionPayload = {};
+  let hasChange = false;
+
+  if (raw.ui && typeof raw.ui === 'object') {
+    out.ui = {};
+    if (VALID_THEMES.has(raw.ui.theme)) {
+      out.ui.theme = raw.ui.theme;
+      hasChange = true;
+    }
+    if (VALID_LAYOUTS.has(raw.ui.layoutMode)) {
+      out.ui.layoutMode = raw.ui.layoutMode;
+      hasChange = true;
+    }
+    if (VALID_PRESENCES.has(raw.ui.avatarPresence)) {
+      out.ui.avatarPresence = raw.ui.avatarPresence;
+      hasChange = true;
+    }
+    if (typeof raw.ui.hudDesignation === 'string' && raw.ui.hudDesignation.trim()) {
+      out.ui.hudDesignation = raw.ui.hudDesignation.trim().slice(0, 32).toUpperCase();
+      hasChange = true;
+    }
+    if (typeof raw.ui.statusBanner === 'string' && raw.ui.statusBanner.trim()) {
+      out.ui.statusBanner = raw.ui.statusBanner.trim().slice(0, 90);
+      hasChange = true;
+    }
+    if (typeof raw.ui.bgOverdrive === 'number' && Number.isFinite(raw.ui.bgOverdrive)) {
+      out.ui.bgOverdrive = Math.max(0.5, Math.min(2.8, raw.ui.bgOverdrive));
+      hasChange = true;
+    }
+    if (typeof raw.ui.hudGlitch === 'number' && Number.isFinite(raw.ui.hudGlitch)) {
+      out.ui.hudGlitch = Math.max(0, Math.min(1, raw.ui.hudGlitch));
+      hasChange = true;
+    }
+  }
+
+  if (raw.voice && typeof raw.voice === 'object') {
+    out.voice = {};
+    if (VALID_VOICE_PROVIDERS.has(raw.voice.provider)) {
+      out.voice.provider = raw.voice.provider;
+      hasChange = true;
+    }
+    if (['troy', 'daniel', 'austin'].includes(raw.voice.groqVoice)) {
+      out.voice.groqVoice = raw.voice.groqVoice;
+      hasChange = true;
+    }
+    if (typeof raw.voice.pitch === 'number' && Number.isFinite(raw.voice.pitch)) {
+      out.voice.pitch = Number(Math.max(0.35, Math.min(1.2, raw.voice.pitch)).toFixed(2));
+      hasChange = true;
+    }
+    if (typeof raw.voice.rate === 'number' && Number.isFinite(raw.voice.rate)) {
+      out.voice.rate = Number(Math.max(0.75, Math.min(1.25, raw.voice.rate)).toFixed(2));
+      hasChange = true;
+    }
+    if (
+      typeof raw.voice.ultronShiftRate === 'number' &&
+      Number.isFinite(raw.voice.ultronShiftRate)
+    ) {
+      out.voice.ultronShiftRate = Number(
+        Math.max(0.74, Math.min(1.08, raw.voice.ultronShiftRate)).toFixed(2)
+      );
+      hasChange = true;
+    }
+    if (typeof raw.voice.roboticResonance === 'boolean') {
+      out.voice.roboticResonance = raw.voice.roboticResonance;
+      hasChange = true;
+    }
+    if (typeof raw.voice.subBassDb === 'number' && Number.isFinite(raw.voice.subBassDb)) {
+      out.voice.subBassDb = Number(Math.max(0, Math.min(14, raw.voice.subBassDb)).toFixed(1));
+      hasChange = true;
+    }
+    if (typeof raw.voice.metallicMix === 'number' && Number.isFinite(raw.voice.metallicMix)) {
+      out.voice.metallicMix = Number(
+        Math.max(0, Math.min(0.6, raw.voice.metallicMix)).toFixed(2)
+      );
+      hasChange = true;
+    }
+    if (typeof raw.voice.ringModHz === 'number' && Number.isFinite(raw.voice.ringModHz)) {
+      out.voice.ringModHz = Math.round(Math.max(0, Math.min(58, raw.voice.ringModHz)));
+      hasChange = true;
+    }
+    if (typeof raw.voice.useMp3Imprint === 'boolean') {
+      out.voice.useMp3Imprint = raw.voice.useMp3Imprint;
+      hasChange = true;
+    }
+    if (typeof raw.voice.replayDroppedMp3 === 'boolean') {
+      out.voice.replayDroppedMp3 = raw.voice.replayDroppedMp3;
+      hasChange = true;
+    }
+  }
+
+  if (raw.tasks && typeof raw.tasks === 'object') {
+    const add = Array.isArray(raw.tasks.add)
+      ? raw.tasks.add.filter((s: unknown) => typeof s === 'string' && s.trim()).map((s: string) => s.trim())
+      : [];
+    const complete = Array.isArray(raw.tasks.complete)
+      ? raw.tasks.complete.filter((s: unknown) => typeof s === 'string' && s.trim()).map((s: string) => s.trim())
+      : [];
+    if (add.length > 0 || complete.length > 0) {
+      out.tasks = { add, complete };
+      hasChange = true;
+    }
+  }
+
+  if (typeof raw.reason === 'string' && raw.reason.trim()) {
+    out.reason = raw.reason.trim().slice(0, 120);
+  }
+
+  return hasChange ? out : undefined;
+}
+
 export function parseRukAiModelResponse(rawOutput: string): {
   cleanAnswer: string;
   memoryUpdate: MemoryUpdatePayload;
+  ultronAction?: UltronActionPayload;
 } {
-  // Strip any <think>...</think> reasoning blocks emitted by reasoning models (e.g. gpt-oss / qwen3)
   let cleanAnswer = rawOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const memoryUpdate: MemoryUpdatePayload = { save: [], delete: [] };
+  let ultronAction: UltronActionPayload | undefined;
 
-  const match = cleanAnswer.match(/<memory_update>([\s\S]*?)<\/memory_update>/i);
-  if (match) {
+  const memMatch = cleanAnswer.match(/<memory_update>([\s\S]*?)<\/memory_update>/i);
+  if (memMatch) {
     cleanAnswer = cleanAnswer.replace(/<memory_update>[\s\S]*?<\/memory_update>/gi, '').trim();
-    const jsonCandidate = match[1]
+    const jsonCandidate = memMatch[1]
       .trim()
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
@@ -222,15 +429,34 @@ export function parseRukAiModelResponse(rawOutput: string): {
         }
       }
     } catch {
-      // Malformed JSON inside <memory_update>; safely ignore while still stripping tag
+      // ignore malformed JSON
     }
   }
 
-  // Also strip any stray unclosed <memory_update>... at end if truncated
-  cleanAnswer = cleanAnswer.replace(/<memory_update>[\s\S]*$/i, '').trim();
+  const actionMatch = cleanAnswer.match(/<ultron_action>([\s\S]*?)<\/ultron_action>/i);
+  if (actionMatch) {
+    cleanAnswer = cleanAnswer.replace(/<ultron_action>[\s\S]*?<\/ultron_action>/gi, '').trim();
+    const actionJson = actionMatch[1]
+      .trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+    try {
+      ultronAction = sanitizeUltronAction(JSON.parse(actionJson));
+    } catch {
+      // ignore malformed JSON
+    }
+  }
+
+  cleanAnswer = cleanAnswer
+    .replace(/<memory_update>[\s\S]*$/i, '')
+    .replace(/<ultron_action>[\s\S]*$/i, '')
+    .trim();
 
   return {
     cleanAnswer: cleanAnswer || 'Directive acknowledged, Rukshan.',
     memoryUpdate,
+    ultronAction,
   };
 }

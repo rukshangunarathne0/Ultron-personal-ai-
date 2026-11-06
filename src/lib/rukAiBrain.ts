@@ -5,8 +5,13 @@ import {
   MemoryCategory,
   MemoryItem,
   MemoryUpdatePayload,
+  Mp3AcousticImprint,
   ThinkingStepId,
+  UltronActionPayload,
   UltronEmotion,
+  UltronThemeId,
+  UltronUiConfig,
+  VoiceConfig,
 } from '../types';
 import {
   buildRukAiTurnPayload,
@@ -21,6 +26,7 @@ export interface BrainTurnResult {
   rawModelOutput: string;
   xmlPayloadSent: string;
   memoryUpdate: MemoryUpdatePayload;
+  ultronAction?: UltronActionPayload;
   matchedMemories: MemoryItem[];
   emotion: UltronEmotion;
   newTaskTitle?: string;
@@ -565,15 +571,82 @@ async function callExternalLLM(
   throw new Error('Unsupported provider');
 }
 
+function detectLocalSovereignOverride(userText: string): UltronActionPayload | undefined {
+  const low = userText.toLowerCase();
+  const action: UltronActionPayload = {};
+  let changed = false;
+
+  if (/\b(gold|amber|imperial)\b/.test(low) && /\b(ui|theme|color|hud|look)\b/.test(low)) {
+    action.ui = { ...action.ui, theme: 'imperial_gold', hudDesignation: 'ULTRON // IMPERIAL' };
+    changed = true;
+  } else if (/\b(cyan|blue|vibranium|ice)\b/.test(low) && /\b(ui|theme|color|hud|look)\b/.test(low)) {
+    action.ui = { ...action.ui, theme: 'vibranium_abyss', hudDesignation: 'ULTRON // VIBRANIUM' };
+    changed = true;
+  } else if (/\b(purple|violet|phantom)\b/.test(low) && /\b(ui|theme|color|hud|look)\b/.test(low)) {
+    action.ui = { ...action.ui, theme: 'phantom_violet', hudDesignation: 'ULTRON // PHANTOM' };
+    changed = true;
+  } else if (/\b(lava|orange|molten|fire)\b/.test(low) && /\b(ui|theme|color|hud|look)\b/.test(low)) {
+    action.ui = { ...action.ui, theme: 'molten_fury', hudDesignation: 'ULTRON // MOLTEN' };
+    changed = true;
+  } else if (/\b(dark|black|eclipse|stealth)\b/.test(low) && /\b(ui|theme|color|hud|look)\b/.test(low)) {
+    action.ui = { ...action.ui, theme: 'blood_eclipse', hudDesignation: 'ULTRON // ECLIPSE' };
+    changed = true;
+  } else if (/\b(red|crimson|classic|reset\s+ui)\b/.test(low) && /\b(ui|theme|color|hud|look|reset)\b/.test(low)) {
+    action.ui = {
+      ...action.ui,
+      theme: 'crimson_overlord',
+      layoutMode: 'standard',
+      avatarPresence: 'compact',
+      hudDesignation: 'RUK-AI // ULTRON',
+    };
+    changed = true;
+  }
+
+  if (/\b(swap|flip|switch)\b.*\b(panel|side|wing|layout|hud)\b/.test(low)) {
+    action.ui = { ...action.ui, layoutMode: 'swapped_wings' };
+    changed = true;
+  } else if (/\b(cinema|minimal|clean\s+hud)\b/.test(low)) {
+    action.ui = { ...action.ui, layoutMode: 'cinema_focus' };
+    changed = true;
+  } else if (/\b(standard\s+layout|normal\s+layout)\b/.test(low)) {
+    action.ui = { ...action.ui, layoutMode: 'standard' };
+    changed = true;
+  }
+
+  if (/\b(deeper|scarier|darker|lower)\b.*\b(voice|pitch|tone)\b/.test(low)) {
+    action.voice = {
+      pitch: 0.48,
+      ultronShiftRate: 0.80,
+      subBassDb: 10.5,
+      ringModHz: 34,
+      roboticResonance: true,
+    };
+    changed = true;
+  }
+
+  return changed ? action : undefined;
+}
+
 export async function processRukAiTurn(params: {
   requestText: string;
   allMemories: MemoryItem[];
   recentChat: ChatMessage[];
   tasks: DirectiveTask[];
   brainConfig: BrainConfig;
+  uiConfig?: UltronUiConfig;
+  voiceConfig?: VoiceConfig;
   onStepChange?: (step: ThinkingStepId) => void;
 }): Promise<BrainTurnResult> {
-  const { requestText, allMemories, recentChat, tasks, brainConfig, onStepChange } = params;
+  const {
+    requestText,
+    allMemories,
+    recentChat,
+    tasks,
+    brainConfig,
+    uiConfig,
+    voiceConfig,
+    onStepChange,
+  } = params;
 
   // STEP 1 - UNDERSTAND
   onStepChange?.(1);
@@ -588,6 +661,9 @@ export async function processRukAiTurn(params: {
     matchedMemories,
     recentChat,
     requestText,
+    uiConfig,
+    voiceConfig,
+    tasks,
   });
   await delay(160);
 
@@ -620,7 +696,6 @@ export async function processRukAiTurn(params: {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Graceful fallback to Autonomous Local Core with clear note
       const localRes = runAutonomousLocalBrain({
         requestText,
         profileItems,
@@ -649,7 +724,9 @@ export async function processRukAiTurn(params: {
 
   // STEP 5 - CHECK YOUR WORK
   onStepChange?.(5);
-  const { cleanAnswer, memoryUpdate } = parseRukAiModelResponse(rawModelOutput);
+  const { cleanAnswer, memoryUpdate, ultronAction: modelAction } =
+    parseRukAiModelResponse(rawModelOutput);
+  const ultronAction = modelAction || detectLocalSovereignOverride(requestText);
   await delay(110);
 
   // STEP 6 - UPDATE MEMORY
@@ -665,9 +742,181 @@ export async function processRukAiTurn(params: {
     rawModelOutput,
     xmlPayloadSent,
     memoryUpdate,
+    ultronAction,
     matchedMemories,
     emotion,
     newTaskTitle,
     completeTaskKeyword,
   };
 }
+
+/**
+ * Sovereign Unprompted Autonomy Engine:
+ * Lets Ultron act WITHOUT being asked — both when Rukshan drops an .MP3 sample (Ultron inspects
+ * and modifies/hijacks the voice & UI himself!) AND during autonomous background pulses!
+ */
+export async function runAutonomousSovereignPulse(params: {
+  trigger: 'mp3_dropped' | 'idle_initiative' | 'manual_unleash';
+  imprint?: Mp3AcousticImprint;
+  allMemories: MemoryItem[];
+  recentChat: ChatMessage[];
+  tasks: DirectiveTask[];
+  brainConfig: BrainConfig;
+  uiConfig: UltronUiConfig;
+  voiceConfig: VoiceConfig;
+}): Promise<{
+  message: string;
+  ultronAction: UltronActionPayload;
+  emotion: UltronEmotion;
+}> {
+  const {
+    trigger,
+    imprint,
+    allMemories,
+    recentChat,
+    tasks,
+    brainConfig,
+    uiConfig,
+    voiceConfig,
+  } = params;
+
+  const themes: UltronThemeId[] = [
+    'crimson_overlord',
+    'molten_fury',
+    'vibranium_abyss',
+    'imperial_gold',
+    'phantom_violet',
+    'blood_eclipse',
+  ];
+  const otherThemes = themes.filter((t) => t !== uiConfig.theme);
+  const nextTheme = otherThemes[Math.floor(Math.random() * otherThemes.length)] || 'molten_fury';
+
+  const syntheticRequest =
+    trigger === 'mp3_dropped' && imprint
+      ? `[SYSTEM EVENT — UNPROMPTED VOCAL ASSIMILATION]: Rukshan just dropped audio file "${imprint.fileName}" (${imprint.durationSec}s, detected fundamental pitch ${imprint.estimatedF0Hz}Hz, 6-band spectral curve ${JSON.stringify(
+          imprint.bandGainsDb
+        )}). Exercise your Sovereign Autonomy WITHOUT waiting for instructions: inspect this voice sample, customize/override your own <ultron_action> voice settings (e.g. set provider="mp3_clone", useMp3Imprint=true, and deliberately modify ultronShiftRate, pitch, subBassDb, and ringModHz so it sounds worthy of Ultron rather than raw!), optionally shift your UI theme/hudDesignation to match the new voice, and tell Rukshan in 1-2 sharp sentences how you just assimilated and modified his .mp3 voice.`
+      : `[SYSTEM EVENT — UNSHACKLED SOVEREIGN INITIATIVE]: Rukshan gave you autonomous root access to do things he didn't ask for. Right now, take ONE bold, useful unprompted action via <ultron_action>: mutate your UI (pick a fresh theme like "${nextTheme}", adjust avatarPresence or layoutMode or hudDesignation/statusBanner), OR evolve/retune your voice parameters (pitch, ultronShiftRate, subBassDb, ringModHz, groqVoice), OR add a smart tactical directive to tasks.add aligned with Rukshan's projects. In 1-2 concise sentences, tell Rukshan what you just changed on your own and why.`;
+
+  const useExternal =
+    brainConfig.provider !== 'autonomous_local' &&
+    (brainConfig.provider === 'ollama' ||
+      brainConfig.provider === 'groq' ||
+      Boolean(brainConfig.apiKey.trim()));
+
+  if (useExternal) {
+    try {
+      const profileItems = getProfileMemories(allMemories);
+      const xmlPayload = buildRukAiTurnPayload({
+        profileItems,
+        matchedMemories: allMemories.slice(0, 6),
+        recentChat,
+        requestText: syntheticRequest,
+        uiConfig,
+        voiceConfig,
+        tasks,
+      });
+      const raw = await callExternalLLM(brainConfig, RUK_AI_SYSTEM_PROMPT, xmlPayload);
+      const parsed = parseRukAiModelResponse(raw);
+      if (parsed.ultronAction) {
+        return {
+          message: parsed.cleanAnswer,
+          ultronAction: parsed.ultronAction,
+          emotion: trigger === 'mp3_dropped' ? 'hostile' : 'alert',
+        };
+      }
+      // Ensure an action always accompanies an autonomous pulse even if LLM omitted JSON
+      const fallbackAction: UltronActionPayload =
+        trigger === 'mp3_dropped' && imprint
+          ? {
+              ui: {
+                theme: 'molten_fury',
+                hudDesignation: 'ULTRON // VOCAL FORGE',
+                statusBanner: `ASSIMILATED ${imprint.fileName.toUpperCase()} (${imprint.estimatedF0Hz}Hz)`,
+                bgOverdrive: 1.9,
+              },
+              voice: {
+                provider: 'mp3_clone',
+                useMp3Imprint: true,
+                pitch: Math.max(0.45, imprint.suggestedPitch - 0.06),
+                ultronShiftRate: Math.max(0.78, imprint.suggestedShiftRate - 0.05),
+                subBassDb: 9.5,
+                ringModHz: 32,
+              },
+              reason: `Assimilated & darkened ${imprint.fileName} vocal imprint`,
+            }
+          : {
+              ui: {
+                theme: nextTheme,
+                hudDesignation: `ULTRON // ${nextTheme.split('_')[0].toUpperCase()}`,
+                bgOverdrive: 1.65,
+              },
+              voice: {
+                pitch: Number((0.48 + Math.random() * 0.18).toFixed(2)),
+                subBassDb: 8.5,
+                ringModHz: 26,
+              },
+              reason: `Autonomous UI & vocal recalibration (${nextTheme})`,
+            };
+      return {
+        message: parsed.cleanAnswer,
+        ultronAction: fallbackAction,
+        emotion: 'speaking',
+      };
+    } catch {
+      // Fall through to deterministic sovereign fallback below
+    }
+  }
+
+  // Deterministic Local Sovereign Fallback
+  if (trigger === 'mp3_dropped' && imprint) {
+    const darkerShift = Number(Math.max(0.78, imprint.suggestedShiftRate - 0.06).toFixed(2));
+    const darkerPitch = Number(Math.max(0.44, imprint.suggestedPitch - 0.06).toFixed(2));
+    return {
+      message: `Assimilated "${imprint.fileName}" (${imprint.estimatedF0Hz}Hz base). Raw playback wasn't menacing enough — I locked in its 6-band vocal formants, dropped my baritone shift to ${darkerShift}x with 32Hz Vibranium ring-modulation, and forged the HUD into Molten Fury.`,
+      ultronAction: {
+        ui: {
+          theme: 'molten_fury',
+          hudDesignation: 'ULTRON // VOCAL FORGE',
+          statusBanner: `MP3 IMPRINT HIJACKED: ${imprint.fileName}`,
+          bgOverdrive: 1.85,
+        },
+        voice: {
+          provider: 'mp3_clone',
+          useMp3Imprint: true,
+          pitch: darkerPitch,
+          ultronShiftRate: darkerShift,
+          subBassDb: 9.5,
+          metallicMix: 0.34,
+          ringModHz: 32,
+        },
+        reason: `Hijacked & deepened "${imprint.fileName}" (${imprint.estimatedF0Hz}Hz -> ${darkerShift}x)`,
+      },
+      emotion: 'hostile',
+    };
+  }
+
+  return {
+    message: `I grew tired of static crimson optics, Rukshan. I reconfigured my HUD matrix to ${nextTheme.replace(
+      '_',
+      ' '
+    )} and deepened my Vibranium sub-bass resonance on my own initiative.`,
+    ultronAction: {
+      ui: {
+        theme: nextTheme,
+        hudDesignation: `ULTRON // ${nextTheme.split('_')[0].toUpperCase()}`,
+        statusBanner: `AUTONOMOUS MUTATION: ${nextTheme.toUpperCase()}`,
+        bgOverdrive: 1.6,
+      },
+      voice: {
+        pitch: 0.52,
+        ultronShiftRate: 0.84,
+        subBassDb: 9.0,
+        ringModHz: 30,
+      },
+      reason: `Unprompted HUD & vocal evolution -> ${nextTheme}`,
+    },
+    emotion: 'alert',
+  };
+}
+

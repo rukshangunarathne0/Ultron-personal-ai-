@@ -34,11 +34,11 @@ interface RightControlHudProps {
 }
 
 const QUICK_DIRECTIVES = [
-  "I'm building an AI startup in Sri Lanka using TypeScript and Python.",
-  'I prefer short bullet-point answers.',
+  'Change your UI theme and make your voice deeper & scarier.',
+  "Do something on your own that I didn't ask for.",
+  'Swap your left and right HUD panels.',
   'What do you know about me?',
-  'How can I add a voice to you?',
-  'Engage scary crimson overdrive!',
+  'Reset UI to classic Crimson Overlord.',
 ];
 
 export const RightControlHud: React.FC<RightControlHudProps> = ({
@@ -216,9 +216,16 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
           </div>
 
           {/* Ultron Reply */}
-          <div className="p-2 border border-red-500/45 bg-red-950/20 max-h-[175px] overflow-y-auto ultron-scroll">
+          <div className="p-2 border border-white/25 bg-black/40 max-h-[175px] overflow-y-auto ultron-scroll">
             <div className="flex items-center justify-between font-mono-tech text-[9px] text-amber-300/90 mb-1">
-              <span>{isProcessing ? 'EXECUTING...' : 'ULTRON:'}</span>
+              <span className="flex items-center gap-1">
+                {isProcessing ? 'EXECUTING...' : 'ULTRON:'}
+                {latestAssistant?.autonomous && (
+                  <span className="px-1 py-0.2 border border-amber-400/60 bg-amber-950/60 text-amber-200 text-[8px]">
+                    UNPROMPTED
+                  </span>
+                )}
+              </span>
               {latestAssistant && (
                 <button
                   type="button"

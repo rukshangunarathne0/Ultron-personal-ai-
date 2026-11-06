@@ -1,11 +1,47 @@
 @import "tailwindcss";
 
 @layer base {
-  :root {
-    --crimson-core: #ff0d26;
-    --crimson-bright: #ff2a3f;
-    --crimson-deep: #7a000e;
-    --obsidian: #030002;
+  :root,
+  [data-ultron-theme="crimson_overlord"] {
+    --ultron-accent: #ff142c;
+    --ultron-bright: #ff3850;
+    --ultron-rgb: 255, 22, 44;
+    --ultron-dark-rgb: 16, 1, 4;
+  }
+
+  [data-ultron-theme="molten_fury"] {
+    --ultron-accent: #ff5d00;
+    --ultron-bright: #ff8c2b;
+    --ultron-rgb: 255, 93, 0;
+    --ultron-dark-rgb: 22, 6, 0;
+  }
+
+  [data-ultron-theme="vibranium_abyss"] {
+    --ultron-accent: #00e5ff;
+    --ultron-bright: #5ff2ff;
+    --ultron-rgb: 0, 229, 255;
+    --ultron-dark-rgb: 1, 14, 22;
+  }
+
+  [data-ultron-theme="imperial_gold"] {
+    --ultron-accent: #ffb703;
+    --ultron-bright: #ffd15c;
+    --ultron-rgb: 255, 183, 3;
+    --ultron-dark-rgb: 20, 12, 0;
+  }
+
+  [data-ultron-theme="phantom_violet"] {
+    --ultron-accent: #b517ff;
+    --ultron-bright: #d47aff;
+    --ultron-rgb: 181, 23, 255;
+    --ultron-dark-rgb: 14, 1, 24;
+  }
+
+  [data-ultron-theme="blood_eclipse"] {
+    --ultron-accent: #ff0038;
+    --ultron-bright: #ff2b59;
+    --ultron-rgb: 255, 0, 56;
+    --ultron-dark-rgb: 5, 0, 2;
   }
 
   * {
@@ -30,29 +66,29 @@
   font-family: 'Share Tech Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-/* Invisible / Glasstic Robotic Panel with Razor Red Border */
+/* Invisible / Glasstic Robotic Panel with Dynamic Ultron Accent Border */
 .ultron-glass {
   position: relative;
   background: linear-gradient(
     145deg,
-    rgba(16, 1, 4, 0.34) 0%,
-    rgba(5, 0, 2, 0.20) 55%,
-    rgba(18, 1, 5, 0.30) 100%
+    rgba(var(--ultron-dark-rgb), 0.36) 0%,
+    rgba(4, 0, 2, 0.22) 55%,
+    rgba(var(--ultron-dark-rgb), 0.32) 100%
   );
   backdrop-filter: blur(8px) saturate(135%);
   -webkit-backdrop-filter: blur(8px) saturate(135%);
-  border: 1px solid rgba(255, 22, 44, 0.52);
+  border: 1px solid rgba(var(--ultron-rgb), 0.54);
   box-shadow:
-    0 0 22px rgba(255, 8, 32, 0.14),
-    inset 0 0 18px rgba(255, 12, 34, 0.07);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+    0 0 22px rgba(var(--ultron-rgb), 0.15),
+    inset 0 0 18px rgba(var(--ultron-rgb), 0.08);
+  transition: border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
 }
 
 .ultron-glass:hover {
-  border-color: rgba(255, 38, 60, 0.78);
+  border-color: rgba(var(--ultron-rgb), 0.82);
   box-shadow:
-    0 0 28px rgba(255, 10, 36, 0.24),
-    inset 0 0 22px rgba(255, 16, 40, 0.11);
+    0 0 28px rgba(var(--ultron-rgb), 0.26),
+    inset 0 0 22px rgba(var(--ultron-rgb), 0.12);
 }
 
 /* Robotic Corner Brackets Overlay */
@@ -67,79 +103,80 @@
   height: 10px;
   pointer-events: none;
   z-index: 2;
+  transition: border-color 0.35s ease, box-shadow 0.35s ease;
 }
 .ultron-corners::before {
   top: -1px;
   left: -1px;
-  border-top: 2px solid #ff2942;
-  border-left: 2px solid #ff2942;
-  box-shadow: -2px -2px 8px rgba(255, 20, 45, 0.55);
+  border-top: 2px solid var(--ultron-bright);
+  border-left: 2px solid var(--ultron-bright);
+  box-shadow: -2px -2px 8px rgba(var(--ultron-rgb), 0.55);
 }
 .ultron-corners::after {
   bottom: -1px;
   right: -1px;
-  border-bottom: 2px solid #ff2942;
-  border-right: 2px solid #ff2942;
-  box-shadow: 2px 2px 8px rgba(255, 20, 45, 0.55);
+  border-bottom: 2px solid var(--ultron-bright);
+  border-right: 2px solid var(--ultron-bright);
+  box-shadow: 2px 2px 8px rgba(var(--ultron-rgb), 0.55);
 }
 
 .ultron-modal-glass {
   background: linear-gradient(
     155deg,
-    rgba(14, 1, 4, 0.86) 0%,
-    rgba(5, 0, 2, 0.92) 100%
+    rgba(var(--ultron-dark-rgb), 0.88) 0%,
+    rgba(4, 0, 2, 0.94) 100%
   );
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid rgba(255, 26, 48, 0.72);
+  border: 1px solid rgba(var(--ultron-rgb), 0.72);
   box-shadow:
-    0 0 55px rgba(255, 0, 28, 0.32),
-    inset 0 0 30px rgba(255, 12, 34, 0.12);
+    0 0 55px rgba(var(--ultron-rgb), 0.32),
+    inset 0 0 30px rgba(var(--ultron-rgb), 0.12);
 }
 
 /* Chamfered Tactical Button */
 .ultron-icon-btn {
   position: relative;
-  background: rgba(14, 1, 4, 0.35);
+  background: rgba(var(--ultron-dark-rgb), 0.36);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 24, 46, 0.58);
+  border: 1px solid rgba(var(--ultron-rgb), 0.58);
   box-shadow:
-    0 0 14px rgba(255, 10, 32, 0.16),
-    inset 0 0 10px rgba(255, 10, 32, 0.08);
+    0 0 14px rgba(var(--ultron-rgb), 0.16),
+    inset 0 0 10px rgba(var(--ultron-rgb), 0.08);
   clip-path: polygon(8px 0%, 100% 0%, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0% 100%, 0% 8px);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ultron-icon-btn:hover {
-  background: rgba(255, 14, 38, 0.20);
-  border-color: #ff2e47;
+  background: rgba(var(--ultron-rgb), 0.20);
+  border-color: var(--ultron-bright);
   box-shadow:
-    0 0 22px rgba(255, 14, 38, 0.45),
-    inset 0 0 14px rgba(255, 24, 48, 0.22);
+    0 0 22px rgba(var(--ultron-rgb), 0.45),
+    inset 0 0 14px rgba(var(--ultron-rgb), 0.22);
   transform: translateX(-2px);
 }
 
 .ultron-icon-btn.active {
-  background: rgba(255, 12, 36, 0.32);
-  border-color: #ff3b52;
+  background: rgba(var(--ultron-rgb), 0.32);
+  border-color: var(--ultron-bright);
   box-shadow:
-    0 0 28px rgba(255, 12, 36, 0.65),
-    inset 0 0 16px rgba(255, 38, 60, 0.35);
+    0 0 28px rgba(var(--ultron-rgb), 0.65),
+    inset 0 0 16px rgba(var(--ultron-rgb), 0.35);
 }
 
 /* CRT & Tactical Scanlines */
 .hud-scanlines {
   background: repeating-linear-gradient(
     to bottom,
-    rgba(255, 0, 24, 0) 0px,
-    rgba(255, 0, 24, 0) 2px,
-    rgba(255, 8, 28, 0.045) 3px,
+    rgba(var(--ultron-rgb), 0) 0px,
+    rgba(var(--ultron-rgb), 0) 2px,
+    rgba(var(--ultron-rgb), 0.048) 3px,
     rgba(0, 0, 0, 0.22) 4px
   );
   pointer-events: none;
 }
 
-/* Custom Crimson Scrollbar */
+/* Custom Accent Scrollbar */
 .ultron-scroll {
   user-select: text;
 }
@@ -151,11 +188,11 @@
   background: rgba(20, 0, 4, 0.25);
 }
 .ultron-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 24, 48, 0.55);
+  background: rgba(var(--ultron-rgb), 0.55);
   border-radius: 2px;
 }
 .ultron-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 42, 64, 0.9);
+  background: rgba(var(--ultron-rgb), 0.9);
 }
 
 @keyframes pulse-ring {
