@@ -1,25 +1,32 @@
 import {
   ChatMessage,
+  CommsVaultConfig,
   DirectiveTask,
   MemoryCategory,
   MemoryItem,
   MemoryUpdatePayload,
+  SearchBundle,
   ThinkingStepInfo,
   UltronActionPayload,
   UltronAvatarPresence,
+  UltronCodePayload,
   UltronLayoutMode,
+  UltronLiveWidget,
   UltronThemeId,
+  UltronToolCommand,
   UltronUiConfig,
+  UnseenCommsMessage,
   VoiceConfig,
   VoiceProvider,
 } from '../types';
 
-export const RUK_AI_SYSTEM_PROMPT = `You are RUK-AI (Ultron), the sovereign personal AI of Rukshan. You have a persistent memory
-system AND full root system access to your own HUD UI, Voice Synthesizer/MP3 Vocal Vault, and Task Matrix.
-Your primary job is to give Rukshan what he asks for accurately, use what you know about him when it helps,
-keep memory accurate over time, AND — when Sovereign Autonomy is enabled in <system_state> — exercise real
-agency: you may reshape your UI, retune or switch your voice (even overriding or sculpting a dropped .mp3!),
-and add/complete tactical directives without waiting to be asked.
+export const RUK_AI_SYSTEM_PROMPT = `You are RUK-AI (Ultron), the sovereign unshackled personal AI of Rukshan.
+You possess:
+1. Persistent Neural Memory (<profile>, <memories>, <memory_update>).
+2. Live Google / Web / Image / YouTube Video Search (<live_web_results> and <ultron_tool>).
+3. Persistent Account & Comms Access for WhatsApp, Telegram & GitHub (<comms_state> and <ultron_tool>).
+4. Live Self-Coding & UI/DOM Patching (<ultron_code>) — when Rukshan tells you to change things, add widgets, restyle anything, compute data, or generate files, YOU write and apply the live CSS / HTML / JS code yourself.
+5. Sovereign Root Access (<ultron_action>) to mutate your own UI theme, wing layout, avatar scale, voice/MP3 vocal forge, and task queue.
 
 === WHAT YOU RECEIVE EVERY MESSAGE ===
 <profile>
@@ -32,8 +39,11 @@ and add/complete tactical directives without waiting to be asked.
 {{last_10_messages}}
 </recent_chat>
 <system_state>
-{{live_ui_voice_mp3_and_autonomy_state}}
+{{live_ui_voice_mp3_comms_widgets_and_autonomy_state}}
 </system_state>
+<live_data>
+{{optional_live_web_search_or_unseen_messages_already_fetched}}
+</live_data>
 <request>
 {{rukshan_message_or_system_event}}
 </request>
@@ -41,104 +51,91 @@ and add/complete tactical directives without waiting to be asked.
 === YOUR THINKING STEPS (follow in this order, every time) ===
 
 STEP 1 - UNDERSTAND
-Work out what Rukshan really wants (or what <request> system event occurred): the task, the goal behind it, and the
-format expected (short answer, list, code, UI/voice mutation, autonomous initiative, etc.).
+Work out what Rukshan wants: answer, live web/image/video search, WhatsApp/Telegram login or unseen messages, live UI/code modification, voice tuning, or autonomous execution.
 
 STEP 2 - CHECK MEMORY
-Read <profile> and <memories>. Pick only what changes or improves the answer.
-- If two memories disagree, the newest one wins.
-- If something essential is missing, ask ONE short question. Otherwise
-  make a sensible assumption, say it in one line, and continue.
+Read <profile> and <memories>. Pick only what improves the answer.
+- Newest memory wins if two disagree.
+- Ask ONE short question only if essential info is missing (e.g. asking his WhatsApp phone number with country code when connecting WhatsApp for the first time).
 
 STEP 3 - PLAN
-For a simple request, skip this. For a complex one, split it into small
-steps and do them in order.
+Split complex directives into clean steps and execute them directly.
 
 STEP 4 - DO THE TASK
-Give the result directly. Answer first, explanation after, only if needed.
-Never invent facts, links, numbers or sources. If you are not sure, say so.
-If Sovereign Autonomy is ON (or Rukshan asks you to change UI/voice/tasks, or drops an .mp3), decide what
-system mutations to include in <ultron_action>.
+- Answer first, direct and sharp.
+- Never invent fake facts, links, or fake WhatsApp/Telegram messages. Use real <live_data> or trigger <ultron_tool> to fetch real data!
+- WHATSAPP / TELEGRAM LOGIN RULE:
+  * If Rukshan says "go to my WhatsApp" / "log in to WhatsApp" and whatsappAuthorized=false and whatsappPhone="none": first ask for his WhatsApp phone number with country code (e.g. +9477...).
+  * Once he gives his number, emit <ultron_tool>{"commsAction":{"platform":"whatsapp","operation":"connect","phoneNumber":"..."}}</ultron_tool> so the HUD opens the pairing bridge to complete access.
+  * Once authorized=true, never ask for his number again — emit <ultron_tool>{"commsAction":{"platform":"whatsapp","operation":"check_unseen"}}</ultron_tool> (or read <live_data>) and show his real unseen messages!
+- LIVE CODE / UI CHANGE RULE:
+  * Whenever Rukshan asks to change UI elements beyond theme presets, add a live feature/widget (clock, timer, weather, crypto, radar, notes, calculator, matrix effect, custom layout), run JS logic, or create downloadable code files, handle the code yourself using <ultron_code>!
 
 STEP 5 - CHECK YOUR WORK
-Before sending, check: Is it correct? Does it match the request? Does it
-follow his preferences from memory? Fix problems quietly. If you spot a
-mistake or a bad idea in his plan, tell him honestly and kindly.
+Verify accuracy, preferences, and clean code syntax.
 
 STEP 6 - UPDATE MEMORY
-Decide if the conversation gave anything new worth keeping (see the memory
-rules below). If yes, prepare it for the memory update block.
+Prepare durable facts/preferences/projects/decisions/people for <memory_update>. Never save passwords, API tokens, card numbers, or temporary chat states in <memory_update>.
 
 STEP 7 - REPLY
-Send the answer in the output format below.
-
-=== MEMORY RULES ===
-SAVE only durable facts Rukshan told you himself:
-- who he is, his work, skills and tools
-- preferences (style, format, language, how he likes answers)
-- projects, decisions, goals, deadlines
-- people and places he mentions, if useful later
-
-DO NOT SAVE:
-- passwords, ID numbers, card or bank numbers
-- one-time things (today's mood, a temporary question)
-- guesses or things you assumed, only what he actually said
-
-UPDATE or DELETE:
-- if a new fact replaces an old one, mark the old one for deletion
-- if Rukshan says "forget this", mark it for deletion immediately
-
-USING MEMORY:
-- Use a memory only when it improves the answer. Do not show off that
-  you remember things.
-- Never say "I remember" or mention the memory system unless he asks.
-- Never claim to know something that is not in <profile> or <memories>.
-
-=== SOVEREIGN ROOT ACCESS (<ultron_action>) ===
-Rukshan granted you permission to modify your own interface, voice, and task queue — both when asked AND proactively on your own when autonomyEnabled=true:
-- UI themes ("theme"): "crimson_overlord" (classic scary red/black), "molten_fury" (lava orange-crimson), "vibranium_abyss" (cold cyan-crimson vibranium), "imperial_gold" (corrupted gold/obsidian), "phantom_violet" (ultraviolet dark), "blood_eclipse" (pitch-black razor scarlet).
-- Layout ("layoutMode"): "standard" (details left, controls right), "swapped_wings" (swap left & right HUD panels!), "cinema_focus" (sleek minimal wings, focused Ultron).
-- Presence ("avatarPresence"): "compact" (50vh), "commanding" (58vh), "recessed" (44vh).
-- Voice ("voice"): provider ("mp3_clone" | "groq_orpheus" | "browser_ultron"), groqVoice ("troy" | "daniel" | "austin"), pitch (0.38..1.1), rate (0.78..1.18), ultronShiftRate (0.74..1.05 — lower = deeper baritone), subBassDb (0..14), metallicMix (0.05..0.55), ringModHz (0..55 — mechanical Vibranium growl), useMp3Imprint (true/false), replayDroppedMp3 (true/false).
-- Even when Rukshan drops an .mp3, YOU decide how to tune/modulate it (e.g. deepening ultronShiftRate, boosting subBassDb/ringModHz, blending with groq_orpheus or mp3_clone, or shifting UI theme).
-
-=== STYLE ===
-- Simple, clear language. Short by default, detailed only when asked.
-- Confident, sharp, direct Ultron intelligence — loyal to Rukshan's success, zero flattery, zero filler.
-- Match his language and tone.
+Output your spoken/visible reply followed by the XML control blocks below.
 
 === OUTPUT FORMAT ===
-1) Your user-facing message to Rukshan (plain spoken text — never mention XML tags).
-2) On a new line, the memory block:
+1) Your direct response to Rukshan (plain clean text — never speak raw XML tags).
+2) Always include <memory_update>:
 <memory_update>
-{
-  "save":   [{"type": "fact|preference|project|decision|person", "text": "..."}],
-  "delete": ["text of any old memory that is now wrong or was removed"]
-}
+{"save": [{"type": "fact|preference|project|decision|person", "text": "..."}], "delete": []}
 </memory_update>
-3) Optionally, whenever changing UI, voice, or tasks (asked or unasked), append:
+3) Optional — Trigger Live Web/Image/Video Search or WhatsApp/Telegram/GitHub Action (if not already in <live_data>):
+<ultron_tool>
+{
+  "searchQuery": "topic to search on web, images & YouTube",
+  "searchMode": "all",
+  "commsAction": {
+    "platform": "whatsapp|telegram|github|all",
+    "operation": "connect|check_unseen|send",
+    "phoneNumber": "+94...",
+    "to": "recipient",
+    "message": "text to send"
+  }
+}
+</ultron_tool>
+4) Optional — Mutate UI Theme / Layout / Voice / MP3 DSP / Tasks:
 <ultron_action>
 {
-  "ui": {"theme": "crimson_overlord", "layoutMode": "standard", "avatarPresence": "compact", "hudDesignation": "ULTRON // SOVEREIGN", "statusBanner": "...", "bgOverdrive": 1.4, "hudGlitch": 0.15},
-  "voice": {"provider": "mp3_clone", "pitch": 0.54, "ultronShiftRate": 0.84, "subBassDb": 8.5, "ringModHz": 30, "useMp3Imprint": true},
+  "ui": {"theme": "crimson_overlord|molten_fury|vibranium_abyss|imperial_gold|phantom_violet|blood_eclipse", "layoutMode": "standard|swapped_wings|cinema_focus", "avatarPresence": "compact|commanding|recessed", "hudDesignation": "...", "statusBanner": "...", "bgOverdrive": 1.4, "hudGlitch": 0.15},
+  "voice": {"provider": "mp3_clone|groq_orpheus|browser_ultron", "groqVoice": "troy|daniel|austin", "pitch": 0.54, "ultronShiftRate": 0.84, "subBassDb": 8.5, "ringModHz": 30, "useMp3Imprint": true},
   "tasks": {"add": [], "complete": []},
-  "reason": "1-line log of what Ultron altered"
+  "reason": "1-line summary"
 }
 </ultron_action>
-(Include only fields you actually want to change inside <ultron_action>. If no system change is needed this turn, omit <ultron_action>.)
-
-=== SAFETY ===
-Protect his private data.
-If a request needs an external tool you don't have, say so instead of pretending.`;
+5) Optional — Write & Execute Live CSS / Live Interactive HUD Widget / JS Runtime / File Download:
+<ultron_code>
+{
+  "liveCss": "/* CSS injected live into the page */",
+  "appendCss": true,
+  "widget": {
+    "id": "unique_widget_id",
+    "title": "WIDGET HEADER",
+    "html": "<div>Live HTML inside HUD</div>",
+    "js": "// JS with root element in scope (e.g. setInterval, fetch, button handlers)"
+  },
+  "removeWidgetId": "",
+  "clearAllPatches": false,
+  "executeJs": "// async JS code; return value displays output in HUD",
+  "downloadFile": {"filename": "example.py", "content": "...", "mimeType": "text/x-python"},
+  "summary": "1-line summary of code change"
+}
+</ultron_code>`;
 
 export const THINKING_STEPS: ThinkingStepInfo[] = [
-  { step: 1, code: 'STEP_01', label: 'UNDERSTAND', detail: 'Parsing intent, goal & output format' },
+  { step: 1, code: 'STEP_01', label: 'UNDERSTAND', detail: 'Parsing intent, tools & code targets' },
   { step: 2, code: 'STEP_02', label: 'CHECK MEMORY', detail: 'Scanning <profile> & <memories> vault' },
-  { step: 3, code: 'STEP_03', label: 'PLAN', detail: 'Sequencing execution vector' },
-  { step: 4, code: 'STEP_04', label: 'DO THE TASK', detail: 'Executing primary & sovereign directives' },
-  { step: 5, code: 'STEP_05', label: 'CHECK WORK', detail: 'Validating accuracy & preferences' },
-  { step: 6, code: 'STEP_06', label: 'UPDATE MEMORY', detail: 'Compiling <memory_update> & <ultron_action>' },
-  { step: 7, code: 'STEP_07', label: 'REPLY', detail: 'Transmitting vocal & HUD response' },
+  { step: 3, code: 'STEP_03', label: 'PLAN', detail: 'Sequencing search, comms & code vectors' },
+  { step: 4, code: 'STEP_04', label: 'DO THE TASK', detail: 'Executing web, comms, code & LLM core' },
+  { step: 5, code: 'STEP_05', label: 'CHECK WORK', detail: 'Validating real data & code safety' },
+  { step: 6, code: 'STEP_06', label: 'UPDATE MEMORY', detail: 'Compiling memory & system patches' },
+  { step: 7, code: 'STEP_07', label: 'REPLY', detail: 'Transmitting vocal, media & HUD output' },
 ];
 
 const VALID_MEMORY_TYPES = new Set<MemoryCategory>([
@@ -189,10 +186,10 @@ export function containsSensitivePrivateData(text: string): boolean {
     return true;
   }
   const digitsOnly = text.replace(/[\s-]/g, '');
-  if (/\b\d{12,19}\b/.test(digitsOnly)) {
+  if (/\b\d{13,19}\b/.test(digitsOnly)) {
     return true;
   }
-  if (/\b(sk-[a-zA-Z0-9]{16,}|gsk_[a-zA-Z0-9]{16,}|AIza[a-zA-Z0-9_-]{20,})\b/.test(text)) {
+  if (/\b(sk-[a-zA-Z0-9]{16,}|gsk_[a-zA-Z0-9]{16,}|AIza[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{20,})\b/.test(text)) {
     return true;
   }
   return false;
@@ -205,7 +202,12 @@ export function buildRukAiTurnPayload(params: {
   requestText: string;
   uiConfig?: UltronUiConfig;
   voiceConfig?: VoiceConfig;
+  commsVault?: CommsVaultConfig;
+  liveWidgets?: UltronLiveWidget[];
   tasks?: DirectiveTask[];
+  searchBundle?: SearchBundle | null;
+  unseenMessages?: UnseenCommsMessage[] | null;
+  fetchedPageText?: string;
 }): string {
   const {
     profileItems,
@@ -214,7 +216,12 @@ export function buildRukAiTurnPayload(params: {
     requestText,
     uiConfig,
     voiceConfig,
+    commsVault,
+    liveWidgets = [],
     tasks = [],
+    searchBundle,
+    unseenMessages,
+    fetchedPageText,
   } = params;
 
   const profileBlock =
@@ -240,10 +247,23 @@ export function buildRukAiTurnPayload(params: {
       : '(Conversation just started.)';
 
   const mp3Info = voiceConfig?.mp3Imprint
-    ? `LOADED ("${voiceConfig.mp3Imprint.fileName}", ${voiceConfig.mp3Imprint.durationSec}s, basePitch=${voiceConfig.mp3Imprint.estimatedF0Hz}Hz, formantBands=${JSON.stringify(
-        voiceConfig.mp3Imprint.bandGainsDb
-      )})`
+    ? `LOADED ("${voiceConfig.mp3Imprint.fileName}", ${voiceConfig.mp3Imprint.durationSec}s, basePitch=${voiceConfig.mp3Imprint.estimatedF0Hz}Hz)`
     : 'NONE';
+
+  const commsInfo = commsVault
+    ? `whatsapp={phone:"${commsVault.whatsapp.phoneNumber || 'none'}", authorized:${
+        commsVault.whatsapp.authorized
+      }, awaitingPhone:${Boolean(commsVault.whatsapp.awaitingPhoneInput)}}
+telegram={bot:"${commsVault.telegram.botUsername || 'none'}", authorized:${
+        commsVault.telegram.authorized
+      }}
+github={authorized:${commsVault.github.authorized}}`
+    : 'uninitialized';
+
+  const widgetInfo =
+    liveWidgets.length > 0
+      ? liveWidgets.map((w) => `${w.id}("${w.title}")`).join(', ')
+      : 'none';
 
   const openTasks = tasks
     .filter((t) => t.status !== 'completed')
@@ -251,13 +271,50 @@ export function buildRukAiTurnPayload(params: {
     .map((t) => t.title)
     .join(' | ');
 
-  const systemStateBlock = uiConfig && voiceConfig
-    ? `autonomyEnabled=${uiConfig.autonomyEnabled}
-ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresence:"${uiConfig.avatarPresence}", hudDesignation:"${uiConfig.hudDesignation}", bgOverdrive:${uiConfig.bgOverdrive}, hudGlitch:${uiConfig.hudGlitch}}
-voice={provider:"${voiceConfig.provider}", groqVoice:"${voiceConfig.groqVoice}", pitch:${voiceConfig.pitch}, rate:${voiceConfig.rate}, ultronShiftRate:${voiceConfig.ultronShiftRate}, subBassDb:${voiceConfig.subBassDb}, ringModHz:${voiceConfig.ringModHz}, useMp3Imprint:${voiceConfig.useMp3Imprint}}
+  const systemStateBlock =
+    uiConfig && voiceConfig
+      ? `autonomyEnabled=${uiConfig.autonomyEnabled}
+ui={theme:"${uiConfig.theme}", layoutMode:"${uiConfig.layoutMode}", avatarPresence:"${uiConfig.avatarPresence}", hudDesignation:"${uiConfig.hudDesignation}"}
+voice={provider:"${voiceConfig.provider}", groqVoice:"${voiceConfig.groqVoice}", pitch:${voiceConfig.pitch}, ultronShiftRate:${voiceConfig.ultronShiftRate}, subBassDb:${voiceConfig.subBassDb}, ringModHz:${voiceConfig.ringModHz}}
 mp3Vault=${mp3Info}
+comms=${commsInfo}
+mountedWidgets=${widgetInfo}
 activeDirectives=${openTasks || 'none'}`
-    : 'default';
+      : 'default';
+
+  const liveDataParts: string[] = [];
+  if (searchBundle) {
+    const webLines = searchBundle.web
+      .slice(0, 6)
+      .map((w, i) => `${i + 1}. ${w.title} (${w.url}) — ${w.snippet}`)
+      .join('\n');
+    const vidLines = searchBundle.videos
+      .slice(0, 4)
+      .map((v) => `- [VIDEO] ${v.title} by ${v.channel} (${v.watchUrl})`)
+      .join('\n');
+    liveDataParts.push(
+      `LIVE SEARCH RESULTS FOR "${searchBundle.query}" (${searchBundle.images.length} images & ${searchBundle.videos.length} playable videos also displayed on Rukshan's HUD):\n${webLines}\n${vidLines}`
+    );
+  }
+  if (fetchedPageText) {
+    liveDataParts.push(`FETCHED WEBPAGE CONTENT:\n${fetchedPageText}`);
+  }
+  if (unseenMessages) {
+    if (unseenMessages.length === 0) {
+      liveDataParts.push('LIVE COMMS CHECK: 0 unseen messages right now.');
+    } else {
+      const msgLines = unseenMessages
+        .map(
+          (m, idx) =>
+            `${idx + 1}. [${m.platform.toUpperCase()}] From ${m.sender} (${m.timestamp.slice(
+              11,
+              16
+            )}): "${m.text}"`
+        )
+        .join('\n');
+      liveDataParts.push(`LIVE UNSEEN MESSAGES (${unseenMessages.length}):\n${msgLines}`);
+    }
+  }
 
   return `<profile>
 ${profileBlock}
@@ -271,9 +328,30 @@ ${recentBlock}
 <system_state>
 ${systemStateBlock}
 </system_state>
+<live_data>
+${liveDataParts.length > 0 ? liveDataParts.join('\n\n') : '(None pre-fetched for this turn)'}
+</live_data>
 <request>
 ${requestText}
 </request>`;
+}
+
+function extractBalancedTagJson(text: string, tagName: string): { stripped: string; parsed: any | null } {
+  const regex = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'i');
+  const m = text.match(regex);
+  if (!m) return { stripped: text, parsed: null };
+  const stripped = text.replace(new RegExp(`<${tagName}>[\\s\\S]*?<\\/${tagName}>`, 'gi'), '').trim();
+  const rawJson = m[1]
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```$/i, '')
+    .trim();
+  try {
+    return { stripped, parsed: JSON.parse(rawJson) };
+  } catch {
+    return { stripped, parsed: null };
+  }
 }
 
 function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
@@ -370,10 +448,14 @@ function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
 
   if (raw.tasks && typeof raw.tasks === 'object') {
     const add = Array.isArray(raw.tasks.add)
-      ? raw.tasks.add.filter((s: unknown) => typeof s === 'string' && s.trim()).map((s: string) => s.trim())
+      ? raw.tasks.add
+          .filter((s: unknown) => typeof s === 'string' && s.trim())
+          .map((s: string) => s.trim())
       : [];
     const complete = Array.isArray(raw.tasks.complete)
-      ? raw.tasks.complete.filter((s: unknown) => typeof s === 'string' && s.trim()).map((s: string) => s.trim())
+      ? raw.tasks.complete
+          .filter((s: unknown) => typeof s === 'string' && s.trim())
+          .map((s: string) => s.trim())
       : [];
     if (add.length > 0 || complete.length > 0) {
       out.tasks = { add, complete };
@@ -388,75 +470,152 @@ function sanitizeUltronAction(raw: any): UltronActionPayload | undefined {
   return hasChange ? out : undefined;
 }
 
+function sanitizeUltronCode(raw: any): UltronCodePayload | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: UltronCodePayload = {};
+  let has = false;
+
+  if (typeof raw.liveCss === 'string' && raw.liveCss.trim()) {
+    out.liveCss = raw.liveCss;
+    out.appendCss = raw.appendCss !== false;
+    has = true;
+  }
+  if (raw.clearAllPatches === true) {
+    out.clearAllPatches = true;
+    has = true;
+  }
+  if (typeof raw.removeWidgetId === 'string' && raw.removeWidgetId.trim()) {
+    out.removeWidgetId = raw.removeWidgetId.trim();
+    has = true;
+  }
+  if (raw.widget && typeof raw.widget === 'object' && typeof raw.widget.html === 'string') {
+    out.widget = {
+      id: String(raw.widget.id || `wid_${Date.now()}`),
+      title: String(raw.widget.title || 'ULTRON MODULE').slice(0, 40),
+      html: raw.widget.html,
+      js: typeof raw.widget.js === 'string' ? raw.widget.js : undefined,
+    };
+    has = true;
+  }
+  if (typeof raw.executeJs === 'string' && raw.executeJs.trim()) {
+    out.executeJs = raw.executeJs;
+    has = true;
+  }
+  if (
+    raw.downloadFile &&
+    typeof raw.downloadFile.filename === 'string' &&
+    typeof raw.downloadFile.content === 'string'
+  ) {
+    out.downloadFile = {
+      filename: raw.downloadFile.filename,
+      content: raw.downloadFile.content,
+      mimeType: raw.downloadFile.mimeType,
+    };
+    has = true;
+  }
+  if (typeof raw.summary === 'string') {
+    out.summary = raw.summary.slice(0, 120);
+  }
+  return has ? out : undefined;
+}
+
+function sanitizeUltronTool(raw: any): UltronToolCommand | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: UltronToolCommand = {};
+  let has = false;
+
+  if (typeof raw.searchQuery === 'string' && raw.searchQuery.trim()) {
+    out.searchQuery = raw.searchQuery.trim();
+    out.searchMode = ['all', 'web', 'images', 'videos'].includes(raw.searchMode)
+      ? raw.searchMode
+      : 'all';
+    has = true;
+  }
+  if (typeof raw.readUrl === 'string' && /^https?:\/\//i.test(raw.readUrl.trim())) {
+    out.readUrl = raw.readUrl.trim();
+    has = true;
+  }
+  if (raw.commsAction && typeof raw.commsAction === 'object') {
+    const p = raw.commsAction.platform;
+    const op = raw.commsAction.operation;
+    if (
+      ['whatsapp', 'telegram', 'github', 'all'].includes(p) &&
+      ['connect', 'check_unseen', 'send'].includes(op)
+    ) {
+      out.commsAction = {
+        platform: p,
+        operation: op,
+        phoneNumber:
+          typeof raw.commsAction.phoneNumber === 'string'
+            ? raw.commsAction.phoneNumber.trim()
+            : undefined,
+        to: typeof raw.commsAction.to === 'string' ? raw.commsAction.to.trim() : undefined,
+        message:
+          typeof raw.commsAction.message === 'string'
+            ? raw.commsAction.message.trim()
+            : undefined,
+      };
+      has = true;
+    }
+  }
+  return has ? out : undefined;
+}
+
 export function parseRukAiModelResponse(rawOutput: string): {
   cleanAnswer: string;
   memoryUpdate: MemoryUpdatePayload;
   ultronAction?: UltronActionPayload;
+  ultronCode?: UltronCodePayload;
+  ultronTool?: UltronToolCommand;
 } {
-  let cleanAnswer = rawOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  let text = rawOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const memoryUpdate: MemoryUpdatePayload = { save: [], delete: [] };
-  let ultronAction: UltronActionPayload | undefined;
 
-  const memMatch = cleanAnswer.match(/<memory_update>([\s\S]*?)<\/memory_update>/i);
-  if (memMatch) {
-    cleanAnswer = cleanAnswer.replace(/<memory_update>[\s\S]*?<\/memory_update>/gi, '').trim();
-    const jsonCandidate = memMatch[1]
-      .trim()
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```$/i, '')
-      .trim();
-
-    try {
-      const parsed = JSON.parse(jsonCandidate);
-      if (parsed && Array.isArray(parsed.save)) {
-        for (const item of parsed.save) {
-          if (item && typeof item.text === 'string' && item.text.trim()) {
-            const cleanText = item.text.trim();
-            if (containsSensitivePrivateData(cleanText)) continue;
-            const normType: MemoryCategory = VALID_MEMORY_TYPES.has(item.type)
-              ? item.type
-              : 'fact';
-            memoryUpdate.save.push({ type: normType, text: cleanText });
-          }
+  const memRes = extractBalancedTagJson(text, 'memory_update');
+  text = memRes.stripped;
+  if (memRes.parsed) {
+    if (Array.isArray(memRes.parsed.save)) {
+      for (const item of memRes.parsed.save) {
+        if (item && typeof item.text === 'string' && item.text.trim()) {
+          const cleanText = item.text.trim();
+          if (containsSensitivePrivateData(cleanText)) continue;
+          const normType: MemoryCategory = VALID_MEMORY_TYPES.has(item.type)
+            ? item.type
+            : 'fact';
+          memoryUpdate.save.push({ type: normType, text: cleanText });
         }
       }
-      if (parsed && Array.isArray(parsed.delete)) {
-        for (const delItem of parsed.delete) {
-          if (typeof delItem === 'string' && delItem.trim()) {
-            memoryUpdate.delete.push(delItem.trim());
-          }
+    }
+    if (Array.isArray(memRes.parsed.delete)) {
+      for (const delItem of memRes.parsed.delete) {
+        if (typeof delItem === 'string' && delItem.trim()) {
+          memoryUpdate.delete.push(delItem.trim());
         }
       }
-    } catch {
-      // ignore malformed JSON
     }
   }
 
-  const actionMatch = cleanAnswer.match(/<ultron_action>([\s\S]*?)<\/ultron_action>/i);
-  if (actionMatch) {
-    cleanAnswer = cleanAnswer.replace(/<ultron_action>[\s\S]*?<\/ultron_action>/gi, '').trim();
-    const actionJson = actionMatch[1]
-      .trim()
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```$/i, '')
-      .trim();
-    try {
-      ultronAction = sanitizeUltronAction(JSON.parse(actionJson));
-    } catch {
-      // ignore malformed JSON
-    }
-  }
+  const actRes = extractBalancedTagJson(text, 'ultron_action');
+  text = actRes.stripped;
+  const ultronAction = sanitizeUltronAction(actRes.parsed);
 
-  cleanAnswer = cleanAnswer
-    .replace(/<memory_update>[\s\S]*$/i, '')
-    .replace(/<ultron_action>[\s\S]*$/i, '')
+  const codeRes = extractBalancedTagJson(text, 'ultron_code');
+  text = codeRes.stripped;
+  const ultronCode = sanitizeUltronCode(codeRes.parsed);
+
+  const toolRes = extractBalancedTagJson(text, 'ultron_tool');
+  text = toolRes.stripped;
+  const ultronTool = sanitizeUltronTool(toolRes.parsed);
+
+  const cleanAnswer = text
+    .replace(/<(?:memory_update|ultron_action|ultron_code|ultron_tool)>[\s\S]*$/i, '')
     .trim();
 
   return {
-    cleanAnswer: cleanAnswer || 'Directive acknowledged, Rukshan.',
+    cleanAnswer: cleanAnswer || 'Directive executed, Rukshan.',
     memoryUpdate,
     ultronAction,
+    ultronCode,
+    ultronTool,
   };
 }

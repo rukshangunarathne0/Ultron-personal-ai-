@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
+  MessageCircle,
   MessageSquare,
   Mic,
   MicOff,
@@ -23,6 +24,8 @@ interface RightControlHudProps {
   isTextBoxOpen: boolean;
   onToggleTextBox: () => void;
   onOpenVoiceBrainSetup: () => void;
+  onOpenCommsHub: () => void;
+  commsLinkedCount: number;
   interimTranscript: string;
   lastUserSpokenOrTyped: string;
   messages: ChatMessage[];
@@ -34,11 +37,11 @@ interface RightControlHudProps {
 }
 
 const QUICK_DIRECTIVES = [
+  'Search Google for Iron Man vs Ultron & show images and videos.',
+  'Go to my WhatsApp',
+  'What are my unseen messages?',
+  'Add a live Colombo digital clock widget to your HUD.',
   'Change your UI theme and make your voice deeper & scarier.',
-  "Do something on your own that I didn't ask for.",
-  'Swap your left and right HUD panels.',
-  'What do you know about me?',
-  'Reset UI to classic Crimson Overlord.',
 ];
 
 export const RightControlHud: React.FC<RightControlHudProps> = ({
@@ -50,6 +53,8 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
   isTextBoxOpen,
   onToggleTextBox,
   onOpenVoiceBrainSetup,
+  onOpenCommsHub,
+  commsLinkedCount,
   interimTranscript,
   lastUserSpokenOrTyped,
   messages,
@@ -80,8 +85,8 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
     <aside className="h-full min-h-0 w-full flex flex-col items-end justify-between pointer-events-none gap-2 z-20">
       {/* TOP-RIGHT: ICON DOCK + COMPACT LIVE TRANSCRIPT BOX */}
       <div className="w-full flex flex-col items-end gap-2 pointer-events-auto min-h-0">
-        {/* Right-Side Action Icons: Mute, Mic, Open Text Box, Setup */}
-        <div className="w-full grid grid-cols-4 gap-1.5">
+        {/* Right-Side Action Icons: Mute, Mic, Open Text Box, Comms, Setup */}
+        <div className="w-full grid grid-cols-5 gap-1">
           {/* 1. MUTE / UNMUTE */}
           <button
             type="button"
@@ -96,7 +101,7 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
             ) : (
               <Volume2 className="w-4 h-4 text-red-100" />
             )}
-            <span className="font-mono-tech text-[8px] tracking-wider text-red-200">
+            <span className="font-mono-tech text-[7.5px] tracking-wider text-red-200">
               {muted ? 'MUTED' : 'MUTE'}
             </span>
           </button>
@@ -119,7 +124,7 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
               ) : (
                 <MicOff className="w-4 h-4 text-red-200" />
               )}
-              <span className="font-mono-tech text-[8px] tracking-wider text-red-200">
+              <span className="font-mono-tech text-[7.5px] tracking-wider text-red-200">
                 {isListening ? 'LIVE' : 'MIC'}
               </span>
             </button>
@@ -135,12 +140,27 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
             }`}
           >
             <MessageSquare className="w-4 h-4 text-red-100" />
-            <span className="font-mono-tech text-[8px] tracking-wider text-red-200">
+            <span className="font-mono-tech text-[7.5px] tracking-wider text-red-200">
               TEXT
             </span>
           </button>
 
-          {/* 4. VOICE & BRAIN SETUP */}
+          {/* 4. WHATSAPP / TELEGRAM COMMS BRIDGE */}
+          <button
+            type="button"
+            onClick={onOpenCommsHub}
+            title="WhatsApp, Telegram & GitHub Access Bridge"
+            className={`ultron-icon-btn h-11 flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              commsLinkedCount > 0 ? 'active' : ''
+            }`}
+          >
+            <MessageCircle className="w-4 h-4 text-emerald-300" />
+            <span className="font-mono-tech text-[7.5px] tracking-wider text-emerald-200">
+              {commsLinkedCount > 0 ? `LINK(${commsLinkedCount})` : 'COMMS'}
+            </span>
+          </button>
+
+          {/* 5. VOICE & BRAIN SETUP */}
           <button
             type="button"
             onClick={onOpenVoiceBrainSetup}
@@ -148,7 +168,7 @@ export const RightControlHud: React.FC<RightControlHudProps> = ({
             className="ultron-icon-btn h-11 flex flex-col items-center justify-center gap-0.5 cursor-pointer border-red-400/75"
           >
             <Radio className="w-4 h-4 text-amber-300" />
-            <span className="font-mono-tech text-[8px] tracking-wider text-amber-200">
+            <span className="font-mono-tech text-[7.5px] tracking-wider text-amber-200">
               VOICE+
             </span>
           </button>

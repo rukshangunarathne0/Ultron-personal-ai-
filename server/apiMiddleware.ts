@@ -140,5 +140,32 @@ export function rukAiApiMiddleware(
     return;
   }
 
+  if (url === '/api/search' || url === '/api/comms') {
+    readJsonBody(req).then(async (body) => {
+      try {
+        const modPath = url === '/api/search' ? '../api/search.js' : '../api/comms.js';
+        const mod = await import(modPath);
+        const handler = mod.default;
+        const vercelLikeReq = Object.assign(req, { body });
+        const vercelLikeRes = Object.assign(res, {
+          status(code: number) {
+            res.statusCode = code;
+            return vercelLikeRes;
+          },
+          json(payload: unknown) {
+            sendJson(res, res.statusCode || 200, payload);
+            return vercelLikeRes;
+          },
+        });
+        await handler(vercelLikeReq, vercelLikeRes);
+      } catch (err) {
+        sendJson(res, 500, {
+          error: err instanceof Error ? err.message : 'Serverless proxy error',
+        });
+      }
+    });
+    return;
+  }
+
   next();
 }

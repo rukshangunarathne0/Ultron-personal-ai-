@@ -5,4 +5,5 @@ dist
 .env
 .env.local
 data/ruk-ai-store.json
+.ultron-wa-auth
 Unselected files

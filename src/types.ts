@@ -4,7 +4,7 @@ export interface MemoryItem {
   id: string;
   type: MemoryCategory;
   text: string;
-  isProfile: boolean; // true for core always-true facts/preferences about Rukshan (<profile>)
+  isProfile: boolean;
   createdAt: string;
   updatedAt: string;
   sourceMessage?: string;
@@ -43,9 +43,9 @@ export interface UltronUiConfig {
   avatarPresence: UltronAvatarPresence;
   hudDesignation: string;
   statusBanner: string;
-  bgOverdrive: number; // 0.5 .. 2.8
-  hudGlitch: number;   // 0 .. 1
-  autonomyEnabled: boolean; // When true, Ultron can proactively mutate UI, voice & tasks unprompted
+  bgOverdrive: number;
+  hudGlitch: number;
+  autonomyEnabled: boolean;
 }
 
 export interface Mp3AcousticImprint {
@@ -54,9 +54,119 @@ export interface Mp3AcousticImprint {
   estimatedF0Hz: number;
   suggestedPitch: number;
   suggestedShiftRate: number;
-  /** 6-band relative dB offsets [85Hz, 180Hz, 380Hz, 850Hz, 1900Hz, 3400Hz] (-10..+12 dB) */
   bandGainsDb: [number, number, number, number, number, number];
   uploadedAt: string;
+}
+
+export interface WebSearchItem {
+  title: string;
+  url: string;
+  snippet: string;
+  source: string;
+}
+
+export interface ImageSearchItem {
+  title: string;
+  thumbnailUrl: string;
+  imageUrl: string;
+  sourceUrl: string;
+  source: string;
+}
+
+export interface VideoSearchItem {
+  videoId: string;
+  title: string;
+  channel: string;
+  duration: string;
+  thumbnailUrl: string;
+  watchUrl: string;
+  embedUrl: string;
+}
+
+export interface SearchBundle {
+  query: string;
+  web: WebSearchItem[];
+  images: ImageSearchItem[];
+  videos: VideoSearchItem[];
+  timestamp: string;
+}
+
+export type CommsPlatform = 'whatsapp' | 'telegram' | 'github';
+
+export interface UnseenCommsMessage {
+  id: string;
+  platform: CommsPlatform;
+  sender: string;
+  chatId: string;
+  text: string;
+  timestamp: string;
+}
+
+export interface CommsVaultConfig {
+  whatsapp: {
+    phoneNumber: string;
+    bridgeMode: 'cloud_green' | 'local_baileys';
+    greenIdInstance: string;
+    greenApiToken: string;
+    localBridgeUrl: string;
+    authorized: boolean;
+    awaitingPhoneInput?: boolean;
+    lastCheckedTimestamp: number;
+  };
+  telegram: {
+    botToken: string;
+    defaultChatId: string;
+    botUsername: string;
+    authorized: boolean;
+    awaitingTokenInput?: boolean;
+    lastUpdateId: number;
+  };
+  github: {
+    token: string;
+    login: string;
+    authorized: boolean;
+  };
+}
+
+export interface UltronLiveWidget {
+  id: string;
+  title: string;
+  html: string;
+  js?: string;
+  createdAt: string;
+}
+
+export interface UltronCodePayload {
+  liveCss?: string;
+  appendCss?: boolean;
+  widget?: {
+    id: string;
+    title: string;
+    html: string;
+    js?: string;
+  };
+  removeWidgetId?: string;
+  clearAllPatches?: boolean;
+  executeJs?: string;
+  downloadFile?: {
+    filename: string;
+    content: string;
+    mimeType?: string;
+  };
+  summary?: string;
+}
+
+export interface UltronToolCommand {
+  searchQuery?: string;
+  searchMode?: 'all' | 'web' | 'images' | 'videos';
+  readUrl?: string;
+  commsAction?: {
+    platform: CommsPlatform | 'all';
+    operation: 'connect' | 'check_unseen' | 'send';
+    phoneNumber?: string;
+    to?: string;
+    message?: string;
+  };
 }
 
 export interface UltronActionPayload {
@@ -85,7 +195,7 @@ export interface AutonomousLogEntry {
   id: string;
   timestamp: string;
   summary: string;
-  category: 'ui' | 'voice' | 'task' | 'initiative';
+  category: 'ui' | 'voice' | 'task' | 'initiative' | 'code' | 'search' | 'comms';
 }
 
 export interface ChatMessage {
@@ -98,18 +208,21 @@ export interface ChatMessage {
   emotion?: UltronEmotion;
   memoryUpdate?: MemoryUpdatePayload;
   ultronAction?: UltronActionPayload;
+  ultronCode?: UltronCodePayload;
+  searchBundle?: SearchBundle;
+  commsMessages?: UnseenCommsMessage[];
   matchedMemories?: string[];
 }
 
 export type UltronEmotion =
-  | 'sentinel'     // Idle watchful menacing calm
-  | 'listening'    // Locked-on optics, audio-reactive cheek cores
-  | 'thinking'     // Rapid optic scanning, calculating HUD overdrive
-  | 'speaking'     // Vocalizing with 60fps mouth & cheek furnace plasma sync
-  | 'hostile'      // Scary blood-crimson overdrive, lightning overdrive
-  | 'memory_sync'  // Neural assimilation pulse into left memory vault
-  | 'loyal'        // Warm molten-gold/crimson acknowledgment
-  | 'alert';       // Tactical caution flash & laser scan
+  | 'sentinel'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  | 'hostile'
+  | 'memory_sync'
+  | 'loyal'
+  | 'alert';
 
 export type ThinkingStepId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -133,16 +246,16 @@ export interface VoiceConfig {
   muted: boolean;
   autoSpeak: boolean;
   browserVoiceURI: string;
-  pitch: number; // default ~0.62 for deep Ultron cadence
-  rate: number;  // default ~0.94
-  roboticResonance: boolean; // Web Audio sub-bass & metallic chamber resonance
-  subBassDb: number;         // 0..14 dB lowshelf boost (Ultron can self-tune!)
-  metallicMix: number;       // 0..0.65 short vibranium delay mix
-  ringModHz: number;         // 0..65 Hz subtle cybernetic ring-mod growl (0 = off)
-  useMp3Imprint: boolean;    // Sculpt outgoing voice with dropped MP3's 6-band formant EQ
+  pitch: number;
+  rate: number;
+  roboticResonance: boolean;
+  subBassDb: number;
+  metallicMix: number;
+  ringModHz: number;
+  useMp3Imprint: boolean;
   mp3Imprint: Mp3AcousticImprint | null;
   groqVoice: 'troy' | 'daniel' | 'austin';
-  ultronShiftRate: number; // 0.72..1.12 playback pitch/baritone shift for neural/MP3 audio
+  ultronShiftRate: number;
   cartesiaApiKey: string;
   cartesiaVoiceId: string;
   elevenLabsApiKey: string;

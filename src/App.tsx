@@ -3,14 +3,18 @@ import {
   AutonomousLogEntry,
   BrainConfig,
   ChatMessage,
+  CommsPlatform,
+  CommsVaultConfig,
   DirectiveTask,
   MemoryCategory,
   MemoryItem,
   PersistedRukAiState,
+  SearchBundle,
   ThinkingStepId,
   UltronActionPayload,
   UltronEmotion,
   UltronUiConfig,
+  UnseenCommsMessage,
   VoiceConfig,
 } from './types';
 import { BackgroundHudSystem } from './components/BackgroundHudSystem';
@@ -18,15 +22,30 @@ import { UltronAvatarRig } from './components/UltronAvatarRig';
 import { LeftDetailsHud } from './components/LeftDetailsHud';
 import { RightControlHud } from './components/RightControlHud';
 import { VoiceBrainModal } from './components/VoiceBrainModal';
+import { OmniViewportDeck } from './components/OmniViewportDeck';
+import { CommsHubModal } from './components/CommsHubModal';
 import { applyMemoryUpdate, shouldBeProfileFact } from './lib/memorySearch';
 import { processRukAiTurn, runAutonomousSovereignPulse } from './lib/rukAiBrain';
 import { ultronVoice } from './lib/voiceEngine';
 import { loadSampleFromVault, readDroppedOrPickedAudioSync } from './lib/mp3Vault';
+import {
+  DEFAULT_COMMS_VAULT,
+  fetchUnseenCommsMessages,
+  sendCommsReply,
+} from './lib/omniTools';
+import {
+  applyLiveCssToDom,
+  executeUltronCodePayload,
+  loadPersistedCodeState,
+  PersistedCodeState,
+  savePersistedCodeState,
+} from './lib/codeEngine';
 
 const LOCAL_STORAGE_STATE_KEY = 'ruk_ai_ultron_state_v1';
 const LOCAL_STORAGE_VOICE_KEY = 'ruk_ai_voice_cfg_v2';
 const LOCAL_STORAGE_BRAIN_KEY = 'ruk_ai_brain_cfg_v3';
 const LOCAL_STORAGE_UI_KEY = 'ruk_ai_ultron_ui_v1';
+const LOCAL_STORAGE_COMMS_KEY = 'ruk_ai_comms_vault_v1';
 
 const DEFAULT_UI_CONFIG: UltronUiConfig = {
   theme: 'crimson_overlord',
@@ -155,7 +174,29 @@ export const App: React.FC = () => {
   const [lastUserSpokenOrTyped, setLastUserSpokenOrTyped] = useState('');
   const [isTextBoxOpen, setIsTextBoxOpen] = useState(true);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
+  const [isCommsModalOpen, setIsCommsModalOpen] = useState(false);
+  const [commsModalPlatform, setCommsModalPlatform] = useState<CommsPlatform>('whatsapp');
   const [isScreenDragOver, setIsScreenDragOver] = useState(false);
+
+  const [activeSearchBundle, setActiveSearchBundle] = useState<SearchBundle | null>(null);
+  const [activeCommsMessages, setActiveCommsMessages] = useState<UnseenCommsMessage[] | null>(null);
+  const [codeState, setCodeState] = useState<PersistedCodeState>(() => loadPersistedCodeState());
+  const [codeOutput, setCodeOutput] = useState<string | null>(null);
+
+  const [commsVault, setCommsVault] = useState<CommsVaultConfig>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_COMMS_KEY);
+      if (!saved) return DEFAULT_COMMS_VAULT;
+      const parsed = JSON.parse(saved);
+      return {
+        whatsapp: { ...DEFAULT_COMMS_VAULT.whatsapp, ...(parsed.whatsapp || {}) },
+        telegram: { ...DEFAULT_COMMS_VAULT.telegram, ...(parsed.telegram || {}) },
+        github: { ...DEFAULT_COMMS_VAULT.github, ...(parsed.github || {}) },
+      };
+    } catch {
+      return DEFAULT_COMMS_VAULT;
+    }
+  });
 
   const [lastMatchedMemoryIds, setLastMatchedMemoryIds] = useState<string[]>([]);
   const [lastXmlPayload, setLastXmlPayload] = useState('');
@@ -223,8 +264,9 @@ export const App: React.FC = () => {
     []
   );
 
-  // Rehydrate vaulted MP3 acoustic imprint from IndexedDB on startup
+  // Rehydrate vaulted MP3 acoustic imprint + persisted live CSS patches on startup
   useEffect(() => {
+    applyLiveCssToDom(codeState.liveCss);
     loadSampleFromVault().then((sample) => {
       if (sample?.imprint) {
         setVoiceConfig((prev) => ({
@@ -234,6 +276,14 @@ export const App: React.FC = () => {
       }
     });
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_COMMS_KEY, JSON.stringify(commsVault));
+    } catch {
+      // ignore
+    }
+  }, [commsVault]);
 
   useEffect(() => {
     try {
@@ -469,6 +519,8 @@ export const App: React.FC = () => {
     brainConfig,
     uiConfig,
     voiceConfig,
+    commsVault,
+    codeState,
     isProcessing,
     isSpeaking,
     isListening,
@@ -480,6 +532,8 @@ export const App: React.FC = () => {
     brainConfig,
     uiConfig,
     voiceConfig,
+    commsVault,
+    codeState,
     isProcessing,
     isSpeaking,
     isListening,
@@ -644,12 +698,50 @@ export const App: React.FC = () => {
           brainConfig: snap.brainConfig,
           uiConfig: snap.uiConfig,
           voiceConfig: snap.voiceConfig,
+          commsVault: snap.commsVault,
+          liveWidgets: snap.codeState.widgets,
           onStepChange: (step) => {
             setActiveStep(step);
             if (step === 2 || step === 3) setEmotion('thinking');
             if (step === 6) setEmotion('memory_sync');
           },
         });
+
+        if (result.updatedCommsVault) {
+          setCommsVault(result.updatedCommsVault);
+        }
+        if (result.openCommsModalFor) {
+          setCommsModalPlatform(result.openCommsModalFor);
+          setIsCommsModalOpen(true);
+        }
+        if (result.searchBundle) {
+          setActiveSearchBundle(result.searchBundle);
+          pushAutoLog(
+            'search',
+            `Web Search "${result.searchBundle.query}" (${result.searchBundle.web.length} web, ${result.searchBundle.images.length} imgs, ${result.searchBundle.videos.length} vids)`
+          );
+        }
+        if (result.commsMessages) {
+          setActiveCommsMessages(result.commsMessages);
+          pushAutoLog(
+            'comms',
+            `Checked unseen messages (${result.commsMessages.length} found)`
+          );
+        }
+
+        // Execute live self-coding patches (<ultron_code>) written by Ultron!
+        if (result.ultronCode) {
+          const codeExec = await executeUltronCodePayload({
+            codePayload: result.ultronCode,
+            currentState: snap.codeState,
+          });
+          setCodeState(codeExec.nextState);
+          if (codeExec.executionOutput) {
+            setCodeOutput(codeExec.executionOutput);
+          }
+          pushAutoLog('code', codeExec.appliedSummary);
+          showToast(`ULTRON CODE ENGINE: ${codeExec.appliedSummary}`);
+        }
 
         const { nextMemories, addedCount, deletedCount } = applyMemoryUpdate(
           snap.memories,
@@ -945,6 +1037,61 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleCheckUnseenNow = async (platform: CommsPlatform | 'all') => {
+    setIsProcessing(true);
+    setEmotion('thinking');
+    try {
+      const res = await fetchUnseenCommsMessages(platform, commsVault);
+      setCommsVault(res.updatedVault);
+      setActiveCommsMessages(res.messages);
+      const summary =
+        res.messages.length > 0
+          ? `Found ${res.messages.length} unseen ${platform === 'all' ? '' : platform + ' '}messages, Rukshan. Displaying them on your HUD.`
+          : `Zero unseen ${platform === 'all' ? '' : platform + ' '}messages right now, Rukshan.`;
+      setMessages((cur) => [
+        ...cur,
+        {
+          id: `msg_comms_${Date.now()}`,
+          role: 'assistant',
+          content: summary,
+          timestamp: new Date().toISOString(),
+          commsMessages: res.messages,
+          emotion: 'loyal',
+        },
+      ]);
+      speakReply(summary, 'loyal');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Comms check failed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSendCommsReplyFromHud = async (
+    platform: 'whatsapp' | 'telegram',
+    to: string,
+    text: string
+  ) => {
+    await sendCommsReply({ platform, to, text, vault: commsVault });
+    showToast(`Sent ${platform.toUpperCase()} reply!`);
+  };
+
+  const handleRemoveLiveWidget = (id: string) => {
+    setCodeState((prev) => {
+      const next = {
+        ...prev,
+        widgets: prev.widgets.filter((w) => w.id !== id),
+      };
+      savePersistedCodeState(next);
+      return next;
+    });
+  };
+
+  const commsLinkedCount =
+    (commsVault.whatsapp.authorized ? 1 : 0) +
+    (commsVault.telegram.authorized ? 1 : 0) +
+    (commsVault.github.authorized ? 1 : 0);
+
   const detailsWing = (
     <LeftDetailsHud
       memories={memories}
@@ -976,7 +1123,11 @@ export const App: React.FC = () => {
           ...DEFAULT_UI_CONFIG,
           autonomyEnabled: prev.autonomyEnabled,
         }));
-        showToast('HUD UI restored to default Crimson Overlord.');
+        applyLiveCssToDom('');
+        const emptyCode: PersistedCodeState = { liveCss: '', widgets: [] };
+        setCodeState(emptyCode);
+        savePersistedCodeState(emptyCode);
+        showToast('HUD UI & live code patches restored to default Crimson Overlord.');
       }}
       onAddMemoryManual={handleAddMemoryManual}
       onDeleteMemory={handleDeleteMemory}
@@ -996,6 +1147,8 @@ export const App: React.FC = () => {
       isTextBoxOpen={isTextBoxOpen}
       onToggleTextBox={() => setIsTextBoxOpen((v) => !v)}
       onOpenVoiceBrainSetup={() => setIsSetupModalOpen(true)}
+      onOpenCommsHub={() => setIsCommsModalOpen(true)}
+      commsLinkedCount={commsLinkedCount}
       interimTranscript={interimTranscript}
       lastUserSpokenOrTyped={lastUserSpokenOrTyped}
       messages={messages}
@@ -1088,15 +1241,28 @@ export const App: React.FC = () => {
           {uiConfig.layoutMode === 'swapped_wings' ? controlsWing : detailsWing}
         </div>
 
-        {/* MIDDLE COLUMN ONLY: Compact, Clean Ultron */}
-        <div className="h-full min-h-0 overflow-hidden">
-          <UltronAvatarRig
-            emotion={emotion}
-            activeStep={activeStep}
-            speechAmplitude={speechAmplitude}
-            micAmplitude={micAmplitude}
-            uiConfig={uiConfig}
+        {/* MIDDLE COLUMN: Omni-Viewport Deck (Search / Images / Videos / Unseen Comms / Live Widgets) + Compact Ultron */}
+        <div className="h-full min-h-0 flex flex-col justify-between overflow-hidden relative">
+          <OmniViewportDeck
+            searchBundle={activeSearchBundle}
+            onCloseSearch={() => setActiveSearchBundle(null)}
+            commsMessages={activeCommsMessages}
+            onCloseComms={() => setActiveCommsMessages(null)}
+            onSendCommsReply={handleSendCommsReplyFromHud}
+            liveWidgets={codeState.widgets}
+            onRemoveWidget={handleRemoveLiveWidget}
+            codeOutput={codeOutput}
+            onCloseCodeOutput={() => setCodeOutput(null)}
           />
+          <div className="flex-1 min-h-[260px] flex items-end justify-center overflow-hidden">
+            <UltronAvatarRig
+              emotion={emotion}
+              activeStep={activeStep}
+              speechAmplitude={speechAmplitude}
+              micAmplitude={micAmplitude}
+              uiConfig={uiConfig}
+            />
+          </div>
         </div>
 
         <div className={`h-full min-h-0 pb-2.5 overflow-hidden ${wingOpacityClass}`}>
@@ -1117,6 +1283,16 @@ export const App: React.FC = () => {
         onTestVoice={handleTestVoice}
         onIngestMp3Bytes={handleIngestMp3Bytes}
         onReplayMp3={handleReplayMp3}
+      />
+
+      {/* MODAL (z-50): WhatsApp, Telegram & GitHub Account Access Bridge */}
+      <CommsHubModal
+        isOpen={isCommsModalOpen}
+        initialPlatform={commsModalPlatform}
+        onClose={() => setIsCommsModalOpen(false)}
+        commsVault={commsVault}
+        onChangeCommsVault={setCommsVault}
+        onCheckUnseenNow={handleCheckUnseenNow}
       />
     </main>
   );

@@ -1,16 +1,22 @@
 import {
   BrainConfig,
   ChatMessage,
+  CommsPlatform,
+  CommsVaultConfig,
   DirectiveTask,
   MemoryCategory,
   MemoryItem,
   MemoryUpdatePayload,
   Mp3AcousticImprint,
+  SearchBundle,
   ThinkingStepId,
   UltronActionPayload,
+  UltronCodePayload,
   UltronEmotion,
+  UltronLiveWidget,
   UltronThemeId,
   UltronUiConfig,
+  UnseenCommsMessage,
   VoiceConfig,
 } from '../types';
 import {
@@ -20,6 +26,15 @@ import {
   RUK_AI_SYSTEM_PROMPT,
 } from './rukAiPrompt';
 import { getProfileMemories, searchRelevantMemories } from './memorySearch';
+import {
+  checkWhatsAppStatus,
+  detectLiveSearchIntent,
+  fetchUnseenCommsMessages,
+  readWebUrl,
+  runUltronWebSearch,
+  sendCommsReply,
+  verifyTelegramToken,
+} from './omniTools';
 
 export interface BrainTurnResult {
   answer: string;
@@ -27,6 +42,11 @@ export interface BrainTurnResult {
   xmlPayloadSent: string;
   memoryUpdate: MemoryUpdatePayload;
   ultronAction?: UltronActionPayload;
+  ultronCode?: UltronCodePayload;
+  searchBundle?: SearchBundle;
+  commsMessages?: UnseenCommsMessage[];
+  updatedCommsVault?: CommsVaultConfig;
+  openCommsModalFor?: CommsPlatform;
   matchedMemories: MemoryItem[];
   emotion: UltronEmotion;
   newTaskTitle?: string;
@@ -627,6 +647,41 @@ function detectLocalSovereignOverride(userText: string): UltronActionPayload | u
   return changed ? action : undefined;
 }
 
+function normalizePhoneInput(raw: string): string | null {
+  const cleaned = raw.replace(/[^\d+]/g, '');
+  const digits = cleaned.replace(/\D/g, '');
+  if (digits.length < 9 || digits.length > 15) return null;
+  // Convert Sri Lankan local 07XXXXXXXX -> +947XXXXXXXX automatically
+  if (digits.length === 10 && digits.startsWith('07')) {
+    return `+94${digits.slice(1)}`;
+  }
+  return cleaned.startsWith('+') ? cleaned : `+${digits}`;
+}
+
+function detectLocalCodeFallback(userText: string): UltronCodePayload | undefined {
+  const low = userText.toLowerCase();
+  if (/\b(clear|remove|reset|delete)\b.*\b(patches|widgets?|custom\s+css|code\s+changes)\b/.test(low)) {
+    return {
+      clearAllPatches: true,
+      summary: 'Cleared all custom CSS patches & mounted HUD widgets',
+    };
+  }
+  if (/\b(add|build|create|show)\b.*\b(clock|time)\b/.test(low)) {
+    return {
+      widget: {
+        id: 'colombo_clock',
+        title: 'COLOMBO TACTICAL CLOCK',
+        html: '<div data-clk style="font-family:Orbitron,monospace;font-size:20px;font-weight:700;letter-spacing:0.15em;text-align:center;padding:6px 0;color:#fff;">--:--:--</div>',
+        js: `const el = root.querySelector('[data-clk]');
+const tick = () => { if (el) el.textContent = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Colombo' }) + ' LKT'; };
+tick(); setInterval(tick, 1000);`,
+      },
+      summary: 'Mounted live Colombo Tactical Clock widget onto HUD',
+    };
+  }
+  return undefined;
+}
+
 export async function processRukAiTurn(params: {
   requestText: string;
   allMemories: MemoryItem[];
@@ -635,6 +690,8 @@ export async function processRukAiTurn(params: {
   brainConfig: BrainConfig;
   uiConfig?: UltronUiConfig;
   voiceConfig?: VoiceConfig;
+  commsVault?: CommsVaultConfig;
+  liveWidgets?: UltronLiveWidget[];
   onStepChange?: (step: ThinkingStepId) => void;
 }): Promise<BrainTurnResult> {
   const {
@@ -645,33 +702,252 @@ export async function processRukAiTurn(params: {
     brainConfig,
     uiConfig,
     voiceConfig,
+    commsVault,
+    liveWidgets = [],
     onStepChange,
   } = params;
 
+  const trimmed = requestText.trim();
+  const lower = trimmed.toLowerCase();
+
   // STEP 1 - UNDERSTAND
   onStepChange?.(1);
-  await delay(140);
+  await delay(100);
 
   // STEP 2 - CHECK MEMORY
   onStepChange?.(2);
   const profileItems = getProfileMemories(allMemories);
   const matchedMemories = searchRelevantMemories(allMemories, requestText, 8);
-  const xmlPayloadSent = buildRukAiTurnPayload({
+
+  let workingVault: CommsVaultConfig | undefined = commsVault
+    ? JSON.parse(JSON.stringify(commsVault))
+    : undefined;
+  let openCommsModalFor: CommsPlatform | undefined;
+  let preFetchedUnseen: UnseenCommsMessage[] | undefined;
+
+  // =========================================================================
+  // CONVERSATIONAL WHATSAPP & TELEGRAM ONBOARDING + PERSISTENT UNSEEN ACCESS
+  // =========================================================================
+  if (workingVault) {
+    // 1. Did Rukshan just reply with his WhatsApp phone number after Ultron asked?
+    const maybePhone = normalizePhoneInput(trimmed);
+    if (
+      workingVault.whatsapp.awaitingPhoneInput &&
+      maybePhone &&
+      trimmed.split(/\s+/).length <= 5
+    ) {
+      workingVault.whatsapp.phoneNumber = maybePhone;
+      workingVault.whatsapp.awaitingPhoneInput = false;
+
+      const st = await checkWhatsAppStatus(workingVault);
+      if (st.authorized) {
+        workingVault.whatsapp.authorized = true;
+        const unseenRes = await fetchUnseenCommsMessages('whatsapp', workingVault);
+        workingVault = unseenRes.updatedVault;
+        const count = unseenRes.messages.length;
+        const ans =
+          count > 0
+            ? `WhatsApp number ${maybePhone} linked and authorized, Rukshan. You have ${count} unseen WhatsApp ${
+                count === 1 ? 'message' : 'messages'
+              } — displaying them on your HUD now.`
+            : `WhatsApp number ${maybePhone} linked and authorized, Rukshan. Zero unseen messages right now — ask me anytime.`;
+        return {
+          answer: ans,
+          rawModelOutput: ans,
+          xmlPayloadSent: '',
+          memoryUpdate: { save: [], delete: [] },
+          commsMessages: unseenRes.messages,
+          updatedCommsVault: workingVault,
+          matchedMemories,
+          emotion: 'loyal',
+        };
+      }
+
+      openCommsModalFor = 'whatsapp';
+      const ans = `Locked in your WhatsApp number (${maybePhone}), Rukshan. Now grant me the 1-time pairing access in the WhatsApp Bridge panel I just opened on your HUD — once linked, I will retain permanent access and show your unseen messages whenever you ask.`;
+      return {
+        answer: ans,
+        rawModelOutput: ans,
+        xmlPayloadSent: '',
+        memoryUpdate: { save: [], delete: [] },
+        updatedCommsVault: workingVault,
+        openCommsModalFor,
+        matchedMemories,
+        emotion: 'alert',
+      };
+    }
+
+    // 2. Did Rukshan paste a Telegram Bot token directly in chat? (12345678:ABC-DEF...)
+    const tgTokenMatch = trimmed.match(/\b(\d{8,12}:[A-Za-z0-9_-]{30,})\b/);
+    if (tgTokenMatch) {
+      try {
+        const info = await verifyTelegramToken(tgTokenMatch[1]);
+        workingVault.telegram.botToken = tgTokenMatch[1];
+        workingVault.telegram.botUsername = info.username;
+        workingVault.telegram.authorized = true;
+        workingVault.telegram.awaitingTokenInput = false;
+        const unseenRes = await fetchUnseenCommsMessages('telegram', workingVault);
+        workingVault = unseenRes.updatedVault;
+        const ans = `Telegram connected (@${info.username}), Rukshan. Access saved permanently — ${unseenRes.messages.length} unseen messages loaded on your HUD.`;
+        return {
+          answer: ans,
+          rawModelOutput: ans,
+          xmlPayloadSent: '',
+          memoryUpdate: { save: [], delete: [] },
+          commsMessages: unseenRes.messages,
+          updatedCommsVault: workingVault,
+          matchedMemories,
+          emotion: 'loyal',
+        };
+      } catch {
+        // continue normal turn
+      }
+    }
+
+    // 3. Explicit "go to my WhatsApp" / "log in to WhatsApp" / "connect WhatsApp"
+    const mentionsWhatsApp = /\b(whatsapp|whats\s*app|wa\s+messages?)\b/i.test(lower);
+    const mentionsTelegram = /\b(telegram|tg\s+messages?)\b/i.test(lower);
+    const mentionsGitHub = /\b(github\s+notifications?|unread\s+github)\b/i.test(lower);
+    const asksUnseen =
+      /\b(unseen|unread|new\s+messages?|check\s+(?:my\s+)?messages?|any\s+messages?|inbox|show\s+(?:me\s+)?(?:the\s+)?messages?)\b/i.test(
+        lower
+      );
+    const asksConnect =
+      /\b(go\s+to\s+(?:my\s+)?|log\s*in(?:\s+to)?|connect(?:\s+to)?|open\s+(?:my\s+)?|link\s+(?:my\s+)?|access\s+(?:my\s+)?)\b/i.test(
+        lower
+      );
+
+    if (mentionsWhatsApp && (asksConnect || asksUnseen)) {
+      const liveSt = await checkWhatsAppStatus(workingVault);
+      if (liveSt.authorized) {
+        workingVault.whatsapp.authorized = true;
+      }
+
+      if (!workingVault.whatsapp.authorized) {
+        // Step 1 of Rukshan's exact flow: ask phone number FIRST!
+        const inlinePhone = normalizePhoneInput(trimmed);
+        if (inlinePhone) {
+          workingVault.whatsapp.phoneNumber = inlinePhone;
+        }
+        if (!workingVault.whatsapp.phoneNumber) {
+          workingVault.whatsapp.awaitingPhoneInput = true;
+          const ans =
+            'Give me your WhatsApp phone number with country code first (for example +9477...), Rukshan, so I can initialize your WhatsApp access link.';
+          return {
+            answer: ans,
+            rawModelOutput: ans,
+            xmlPayloadSent: '',
+            memoryUpdate: { save: [], delete: [] },
+            updatedCommsVault: workingVault,
+            matchedMemories,
+            emotion: 'listening',
+          };
+        }
+
+        // Phone number already known -> Step 2: open Pairing Bridge!
+        openCommsModalFor = 'whatsapp';
+        const ans = `Your number (${workingVault.whatsapp.phoneNumber}) is on file, Rukshan, and I've opened the WhatsApp Access Bridge on your HUD so you can authorize the pairing code. Once paired, ask me for unseen messages anytime.`;
+        return {
+          answer: ans,
+          rawModelOutput: ans,
+          xmlPayloadSent: '',
+          memoryUpdate: { save: [], delete: [] },
+          updatedCommsVault: workingVault,
+          openCommsModalFor,
+          matchedMemories,
+          emotion: 'alert',
+        };
+      }
+
+      // Already authorized! Fetch real unseen WhatsApp messages!
+      const unseenRes = await fetchUnseenCommsMessages('whatsapp', workingVault);
+      workingVault = unseenRes.updatedVault;
+      preFetchedUnseen = unseenRes.messages;
+    } else if (mentionsTelegram && (asksConnect || asksUnseen)) {
+      if (!workingVault.telegram.authorized || !workingVault.telegram.botToken.trim()) {
+        workingVault.telegram.awaitingTokenInput = true;
+        openCommsModalFor = 'telegram';
+        const ans =
+          'Opened the Telegram Access Bridge on your HUD, Rukshan. Paste your @BotFather token there (or right here in chat) once — after that I will hold permanent access to read unseen messages and reply.';
+        return {
+          answer: ans,
+          rawModelOutput: ans,
+          xmlPayloadSent: '',
+          memoryUpdate: { save: [], delete: [] },
+          updatedCommsVault: workingVault,
+          openCommsModalFor,
+          matchedMemories,
+          emotion: 'alert',
+        };
+      }
+      const unseenRes = await fetchUnseenCommsMessages('telegram', workingVault);
+      workingVault = unseenRes.updatedVault;
+      preFetchedUnseen = unseenRes.messages;
+    } else if (mentionsGitHub && asksUnseen && workingVault.github.token.trim()) {
+      const unseenRes = await fetchUnseenCommsMessages('github', workingVault);
+      workingVault = unseenRes.updatedVault;
+      preFetchedUnseen = unseenRes.messages;
+    } else if (asksUnseen) {
+      // Generic "what are the unseen messages?" across all linked accounts!
+      const anyLinked =
+        workingVault.whatsapp.authorized ||
+        workingVault.telegram.authorized ||
+        workingVault.github.authorized;
+      if (!anyLinked) {
+        workingVault.whatsapp.awaitingPhoneInput = true;
+        const ans =
+          'Neither WhatsApp nor Telegram is linked yet, Rukshan. Tell me your WhatsApp phone number with country code (+94...) to link WhatsApp first, or tap COMMS on the right to link Telegram.';
+        return {
+          answer: ans,
+          rawModelOutput: ans,
+          xmlPayloadSent: '',
+          memoryUpdate: { save: [], delete: [] },
+          updatedCommsVault: workingVault,
+          matchedMemories,
+          emotion: 'listening',
+        };
+      }
+      const unseenRes = await fetchUnseenCommsMessages('all', workingVault);
+      workingVault = unseenRes.updatedVault;
+      preFetchedUnseen = unseenRes.messages;
+    }
+  }
+
+  // STEP 3 - PLAN & PRE-FETCH LIVE WEB / IMAGES / VIDEOS IF NEEDED
+  onStepChange?.(3);
+  let searchBundle: SearchBundle | undefined;
+  let fetchedPageText: string | undefined;
+
+  const searchIntent = detectLiveSearchIntent(requestText);
+  if (searchIntent.needed) {
+    try {
+      if (searchIntent.readUrl) {
+        const page = await readWebUrl(searchIntent.readUrl);
+        fetchedPageText = `${page.title} (${page.url}):\n${page.text}`;
+      } else {
+        searchBundle = await runUltronWebSearch(searchIntent.query, searchIntent.mode);
+      }
+    } catch {
+      // continue gracefully
+    }
+  }
+
+  let xmlPayloadSent = buildRukAiTurnPayload({
     profileItems,
     matchedMemories,
     recentChat,
     requestText,
     uiConfig,
     voiceConfig,
+    commsVault: workingVault,
+    liveWidgets,
     tasks,
+    searchBundle,
+    unseenMessages: preFetchedUnseen,
+    fetchedPageText,
   });
-  await delay(160);
 
-  // STEP 3 - PLAN
-  onStepChange?.(3);
-  await delay(130);
-
-  // STEP 4 - DO THE TASK
+  // STEP 4 - DO THE TASK (LLM + AGENTIC TOOL LOOP)
   onStepChange?.(4);
   let rawModelOutput = '';
   let newTaskTitle: string | undefined;
@@ -694,6 +970,91 @@ export async function processRukAiTurn(params: {
         RUK_AI_SYSTEM_PROMPT,
         xmlPayloadSent
       );
+
+      // Check if LLM requested a live <ultron_tool> search or message send that wasn't pre-fetched!
+      const firstPass = parseRukAiModelResponse(rawModelOutput);
+      if (firstPass.ultronTool) {
+        const tool = firstPass.ultronTool;
+        let needSecondSynthesis = false;
+
+        if (tool.searchQuery && !searchBundle) {
+          try {
+            searchBundle = await runUltronWebSearch(
+              tool.searchQuery,
+              tool.searchMode || 'all'
+            );
+            needSecondSynthesis = true;
+          } catch {
+            // ignore
+          }
+        }
+        if (tool.readUrl && !fetchedPageText) {
+          try {
+            const page = await readWebUrl(tool.readUrl);
+            fetchedPageText = `${page.title} (${page.url}):\n${page.text}`;
+            needSecondSynthesis = true;
+          } catch {
+            // ignore
+          }
+        }
+        if (tool.commsAction && workingVault) {
+          if (
+            tool.commsAction.operation === 'send' &&
+            tool.commsAction.to &&
+            tool.commsAction.message &&
+            (tool.commsAction.platform === 'whatsapp' || tool.commsAction.platform === 'telegram')
+          ) {
+            await sendCommsReply({
+              platform: tool.commsAction.platform,
+              to: tool.commsAction.to,
+              text: tool.commsAction.message,
+              vault: workingVault,
+            }).catch(() => {});
+          } else if (tool.commsAction.operation === 'check_unseen' && !preFetchedUnseen) {
+            const uRes = await fetchUnseenCommsMessages(
+              tool.commsAction.platform,
+              workingVault
+            );
+            workingVault = uRes.updatedVault;
+            preFetchedUnseen = uRes.messages;
+            needSecondSynthesis = true;
+          } else if (tool.commsAction.operation === 'connect') {
+            if (tool.commsAction.phoneNumber) {
+              const norm = normalizePhoneInput(tool.commsAction.phoneNumber);
+              if (norm) workingVault.whatsapp.phoneNumber = norm;
+            }
+            if (
+              tool.commsAction.platform === 'whatsapp' ||
+              tool.commsAction.platform === 'telegram' ||
+              tool.commsAction.platform === 'github'
+            ) {
+              openCommsModalFor = tool.commsAction.platform;
+            }
+          }
+        }
+
+        if (needSecondSynthesis) {
+          xmlPayloadSent = buildRukAiTurnPayload({
+            profileItems,
+            matchedMemories,
+            recentChat,
+            requestText,
+            uiConfig,
+            voiceConfig,
+            commsVault: workingVault,
+            liveWidgets,
+            tasks,
+            searchBundle,
+            unseenMessages: preFetchedUnseen,
+            fetchedPageText,
+          });
+          rawModelOutput = await callExternalLLM(
+            brainConfig,
+            RUK_AI_SYSTEM_PROMPT,
+            xmlPayloadSent
+          );
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const localRes = runAutonomousLocalBrain({
@@ -709,7 +1070,7 @@ export async function processRukAiTurn(params: {
       )}</memory_update>`;
     }
   } else {
-    await delay(180);
+    await delay(150);
     const localRes = runAutonomousLocalBrain({
       requestText,
       profileItems,
@@ -724,14 +1085,20 @@ export async function processRukAiTurn(params: {
 
   // STEP 5 - CHECK YOUR WORK
   onStepChange?.(5);
-  const { cleanAnswer, memoryUpdate, ultronAction: modelAction } =
-    parseRukAiModelResponse(rawModelOutput);
+  const {
+    cleanAnswer,
+    memoryUpdate,
+    ultronAction: modelAction,
+    ultronCode: modelCode,
+  } = parseRukAiModelResponse(rawModelOutput);
+
   const ultronAction = modelAction || detectLocalSovereignOverride(requestText);
-  await delay(110);
+  const ultronCode = modelCode || detectLocalCodeFallback(requestText);
+  await delay(90);
 
   // STEP 6 - UPDATE MEMORY
   onStepChange?.(6);
-  await delay(memoryUpdate.save.length > 0 || memoryUpdate.delete.length > 0 ? 240 : 100);
+  await delay(memoryUpdate.save.length > 0 || memoryUpdate.delete.length > 0 ? 200 : 80);
 
   // STEP 7 - REPLY
   onStepChange?.(7);
@@ -743,6 +1110,11 @@ export async function processRukAiTurn(params: {
     xmlPayloadSent,
     memoryUpdate,
     ultronAction,
+    ultronCode,
+    searchBundle,
+    commsMessages: preFetchedUnseen,
+    updatedCommsVault: workingVault,
+    openCommsModalFor,
     matchedMemories,
     emotion,
     newTaskTitle,
